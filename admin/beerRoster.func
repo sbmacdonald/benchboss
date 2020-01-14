@@ -1,0 +1,334 @@
+#!/bin/bash
+. functions
+
+# -----------------------------------------------------------------------------
+function moveToBeerDuty() {
+  # ";" separated list of email addresses
+  for p in ${CGI_plist//;/ } ; do
+    #sed -i "s/\($p~.*~.*~\)\(.~\)\(.*\)/\1r~\3/" ${ROSTER}
+    sed -i "s/\($p~.*~.*~\)\([r|s|i]~\)\(.~\)/\1r~\3/" ${ROSTER} 
+    logInfo "MoveToBeerDuty($REMOTE_USER): $p" >> $rosterLogFile
+  done
+}
+
+# -----------------------------------------------------------------------------
+function moveToExemptions() {
+  # ";" separated list of email addresses
+  for p in ${CGI_plist//;/ } ; do
+    #sed -i "s/\($p~.*~.*~\)\(.~\)\(.*\)/\1s~\3/" ${ROSTER}
+    sed -i "s/\($p~.*~.*~\)\([r|s|i]~\)\(.~\)/\1s~\3/" ${ROSTER} 
+    logInfo "MoveToBeerExemptions($REMOTE_USER): $p" >> $rosterLogFile
+  done
+}
+
+
+# -----------------------------------------------------------------------------
+# Print the guts of the roster management page
+function printBulkRosterPageRSI () {
+  tempRosterFile=${ROSTER}.tmp
+  
+  beerDutyCount=`grep   -c -i "^[A-z].*~.*~.*~.*~a$" ${ROSTER}`
+  exemptionsCount=`grep -c -i "^[A-z].*~.*~.*~.*~e$" ${ROSTER}`
+
+printf "<h3>Beer Roster Management</h3>"
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# B E E R   R O S T E R, (sorted goalies first, then skaters)
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+if [ $beerDutyCount -lt 5 ]  ; then
+  beerDutyectionHeight="min-Height:160px"
+fi
+if [ ${exemptionsCount:-0} -gt 0 -a $exemptionsCount -lt 5 ]  ; then
+  exemptionsSectionHeight="min-Height:160px"
+fi
+
+cat << EEE
+
+<div class="accordion" id="roster">
+  <div class="accordion-group">
+   <div class="accordion-heading">
+     <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#roster" href="#beerDutySection"><b>Beer Duty($beerDutyCount)</b></a>
+   </div>
+   <div id="beerDutySection" class="accordion-body collapse out">
+     <div class="accordion-inner" style="${beerDutyectionHeight}">
+     
+       <div class="form-actions" style="margin:0px; padding:0px;">
+         <div class="btn-group">
+           <button class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="beerDutyGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></span></input></button>
+           <ul class="dropdown-menu">
+             <li><a onclick="toggleGroup2(true, 'beerDutyGroup','beerDuty')">all</a></li>
+             <li><a onclick="toggleGroup2(false,'beerDutyGroup','beerDuty')">none</a></li>
+           </ul>
+         </div>
+         <div class="btn-group">
+           <button id="beerDutyGroupMenu" class="btn btn-primary dropdown-toggle" style="border-radius: 0px; display: none;" data-toggle="dropdown"><i class="icon-user icon-white">&nbsp;</i> Actions <span class="icon-caret-down"></span></button>
+           <ul class="dropdown-menu">
+             <li id="move" class="custom"><a href="beerRoster.html" onclick="moveTo('beerDutyList','e')"><i class="icon-download-alt text-success"></i> <span class="text-success">move to exemptions</span></a></li>
+           </ul>
+       </div> <!-- / class="form-actions" -->
+       </div>
+
+
+<table class="table table-hover table-condensed" id="beerDutyList" cellpadding="2" cellspacing="0" border="0">
+
+<tbody>
+EEE
+  for player in `grep -i "^[A-z].*~.*~.*~.*~a$" ${ROSTER} | sort -u -t"~" -k1 | sort -t"~" -k5 -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do
+    playerPos=`getPlayerPosition $player`
+    printf "<tr id=\"$player\">\n"
+    printf "<td width=\"10\">\n"
+    printf "<input type=\"checkbox\" class=\"$playerPos\" id=\"cb_$player\" name=\"beerDuty\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\">"
+    
+    printf "</td><td><label for=\"cb_$player\"> %s" "`getFullName $player`" 
+    if [ `isGoalie $player` -eq 0 ] ; then
+      printf "<i class="muted"> (goalie)</i>"
+    fi
+    printf "</label></td>"
+    printf "</tr>"
+  done
+
+cat << EOW
+</tbody>
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="beerDutySection" -->
+</div> <!-- /class="accordion-group" -->
+EOW
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# E X E M P T I O N S
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+if [ ${exemptionsCount:-0} -eq 0 ] ; then
+  exemptionselectorEnabled="disabled" 
+fi
+
+cat << EOE
+  <div class="accordion-group">
+    <div class="accordion-heading">
+      <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#roster" href="#exemptionsSection"><b>Exemptions(${exemptionsCount:-0}):</b></a>
+    </div>
+    <div id="exemptionsSection" class="accordion-body collapse out">
+      <div class="accordion-inner"  style="${exemptionsSectionHeight}">
+        <div class="form-actions" style="margin:0px; padding:0px;">
+          <div class="btn-group">
+            <button $exemptionselectorEnabled class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="spareGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></button>
+            <ul class="dropdown-menu">
+              <li><a onclick="toggleGroup2(true,'spareGroup','spare')">all</a></li>
+              <li><a onclick="toggleGroup2(false,'spareGroup','spare')">none</a></li>
+            </ul>
+          </div> <!-- / class="btn-group" -->
+
+          <div class="btn-group">
+            <button id="spareGroupMenu" class="btn btn-primary dropdown-toggle" style="border-radius: 0px; display: none;" data-toggle="dropdown"><i class="icon-user icon-white">&nbsp;</i> Actions <span class="icon-caret-down"></span></button>
+            <ul class="dropdown-menu">
+              <li id="move"><a href="beerRoster.html" onclick="moveTo('spareList','a')"><i class="icon-upload-alt text-success"></i> <span class="text-success">move to beerDuty</span></a></li>
+        </div> <!-- / class="form-actions" -->
+        </div>
+<table class="table table-hover table-condensed" id="spareList" cellpadding="2" cellspacing="0" border="0">
+<tbody>
+EOE
+
+if [ ${exemptionsCount:-0} -gt 0 ] ; then
+  for player in `grep -i "^[A-z].*~.*~.*~.*~e$" ${ROSTER} | sort -u -t"~" -k1 | sort -t"~" -k5 -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do 
+    printf "<tr id=\"$player\">\n"
+    printf "<td width=\"10\">\n"
+    printf "<input type=\"checkbox\" id=\"cb_$player\" name=\"spare\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\">"
+    
+    printf "</td><td><label for=\"cb_$player\"> %s" "`getFullName $player`"
+    if [ `isGoalie $player` -eq 0 ] ; then
+      printf "<i class="muted"> (goalie)</i>"
+    fi
+    printf "</label></td>\n"
+    printf "</tr>"
+  done
+else
+  printf "<tr rowspan=\"2\"><td>none</td></tr>\n"
+fi
+
+cat << EOW
+</tbody>
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="exemptionsSection" -->
+</div> <!-- /class="accordion-group" -->
+
+</div> <!-- /class="accordion" -->
+
+<div id="confirmDialogue" class="modal hide fade" style="display: none; ">
+  <div class="modal-body">
+    <div id="removeMessage">Really delete players ?</div>
+  </div>
+  <div class="modal-footer">
+    <a href="#" class="btn btn-danger btn-small" data-dismiss="modal">Cancel</a>
+    <a href="beerRoster.html" class="btn btn-small btn-success" onclick="post()">OK</a>
+  </div>
+</div>
+                    
+<script type="text/javascript">
+
+var g_rosterAction = "";
+var g_rosterTable = "";
+var g_deletePlayers = 0;
+
+function post(){
+  g_deletePlayers = 1;
+  alert(g_deletePlayers + ' ' + g_rosterAction + ' ' + g_rosterTable);
+  \$("#confirmDialogue").modal("hide");
+}
+
+function confirm(table, x){
+
+  g_rosterAction = x;
+  g_rosterTable = table;
+
+  \$("#confirmDialogue").modal("show");
+  //if (g_deletePlayers == 1) {
+  //  moveTo(table, x);
+  //}
+}
+
+function moveTo(table, x){
+  var selected = \$("table#" + table).find("tr input[type='checkbox']:checked");
+  //\$(selected).each(function(e){});
+  var playerList = [];
+  selected.each(
+    function(i,e){
+      playerList.push(\$(e).parent().parent().attr('id'));
+    }
+  );
+
+  //alert(playerList.join(";"));
+
+  var request = \$.ajax({
+     type: "POST",
+     url: "player.cgi",
+     async: false,
+     data: { action: "mt" + x , plist: playerList.join(";") }
+     });
+     
+   request.done(function( msg ) {
+       //alert( "Players Moved");
+       //window.location.href = "beerRoster.cgi";
+       //var loc = \$(this).attr('href');
+   });
+   
+   request.complete(function( msg ) {
+       //alert( "Players Moved");
+       //window.location.href = "beerRoster.cgi";
+       //var loc = \$(this).attr('href');
+       window.location.assign(\$(this).attr('href'));             
+   });
+  
+}
+
+function editPlayer(table)
+{
+  var player = \$("table#" + table).find("tr input[type='checkbox']:checked");
+  var hrefval = \$(this).attr('href');
+  var link='addPlayer.html?action=edt&plist='
+          + \$(player).parent().parent().attr('id');
+  //alert(link)
+  window.location.assign(link);
+}
+
+function unhideMenu(group)
+{
+  //val = document.getElementById('goalieGroup').checked ? true : false;
+  //document.getElementById('goalieMenu').disabled = !val;
+  menuDisp = document.getElementById(group).checked ? "inline" : "none";
+  addDisp  = document.getElementById(group).checked ? "none" : "inline";
+  document.getElementById(group + 'Menu').style.display = menuDisp;
+  document.getElementById(group + 'Add').style.display = addDisp;
+}
+
+
+function toggleGroup2(all,group,rowName)
+{
+  val = all
+  if(all){
+    document.getElementById(group).checked = true;
+  }
+  else{
+    document.getElementById(group).checked = false;
+  }
+  trclass = document.getElementById(group).checked ? "row-selected" : ""
+  elements = document.getElementsByName(rowName)
+  for(e=0; e < elements.length; e++) {
+    elements[e].checked=val;
+    // Toggle hover class
+    //var tr = elements[e].parentNode.parentNode;
+    //tr.className = trclass;
+    highlightRow(elements[e], group);
+  }
+  // TODO: Unhide/enable menu
+  //document.getElementById('submenu').style.display = (document.getElementById('goalieGroup').checked) ? "inline" : "none";
+  document.getElementById('edit').style.display = document.getElementById(group).checked ? "none" : "inline";
+  unhideMenu(group);
+}
+
+function highlightRow(e, group)
+{
+  trclass = document.getElementById(group).checked ? "row-selected" : ""
+  var tr = e.parentNode.parentNode;
+  tr.className = trclass;
+}
+
+function enableMenu(eName)
+{
+  elements = document.getElementsByName(eName)
+  var rowsSelected=0;
+  for(e=0;e<elements.length;e++) {
+    rowsSelected += elements[e].checked ? 1 : 0;
+  }
+  //document.getElementById('submenu').disabled = rowsSelected > 0 ? false : true;
+  document.getElementById(eName + 'GroupMenu').style.display = rowsSelected > 0 ? "inline" : "none";
+  document.getElementById(eName + 'GroupAdd').style.display = rowsSelected > 0 ? "none" : "inline";
+  document.getElementById('edit').style.display = rowsSelected > 1 ? "none" : "inline";
+}
+
+function selectRow(e)
+{
+  //alert(e.getAttribute('data-player-type'));
+  trclass = e.checked ? "row-selected" : ""
+  var tr = e.parentNode.parentNode;
+  tr.className = trclass;
+  //alert('e.name:' + e.getAttribute('name'));
+  enableMenu(e.getAttribute('name'));
+}
+
+function selectListByClass(tid, c, group)
+{
+  //alert("selectListByClass");
+   // Clear any selected checkboxes
+  \$("table#" + tid + " :checkbox").each(
+    function(i,e){
+      \$(e).prop('checked', false);
+      \$(e).parent().parent().removeClass('row-selected');
+   });
+
+//alert("after clearing check boxes");
+  // Filter rows with the specified class 's'
+  var items = \$("table#" + tid + " ." + c);
+//alert(items + " c: " + c);
+  //\$("table#" + tid + " ." + c).each(
+  items.each(
+    function(i,e){
+      //alert(e);
+      \$(e).prop('checked', true);
+      //alert(\$(e).parent().parent().className);
+      \$(e).parent().parent().toggleClass('row-selected');
+      }
+  );
+
+  // Unhide the menu if is should be
+  if(items.length > 0){
+    document.getElementById(group).checked = true;
+    unhideMenu(group);
+  }
+}
+
+</script>
+EOW
+}

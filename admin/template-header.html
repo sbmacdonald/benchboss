@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>    <meta charset="utf-8">
+    <title>BenchBoss LEAGUE_ACRO</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <!-- Le styles -->
+    <!-- <link rel="STYLESHEET" href="http://xdal.org/benchboss//Common/purple.css" type="text/css"/> -->
+    <link href="../../Common/bootstrap/css/bootstrap.css" rel="stylesheet">
+    <link href="../../Common/bootstrap/datepicker/css/datepicker.css" rel="stylesheet">
+
+    <link href="../../Common/stephen-datetimepicker/css/bootstrap-datetimepicker.min.css" rel="stylesheet">
+    <style type="text/css">
+      #logo-background {
+        z-index:1;
+      }
+
+      #logo-background:before {
+        content:"";
+        position:absolute;
+        z-index:-1;
+        top:60px;
+        bottom:0;
+        left:0;
+        right:0;
+        background:url('../logo.gif') no-repeat;
+        background-size:500px 500px;
+        opacity:0.1;
+      }
+      body{
+        padding-top: 60px;
+        padding-bottom: 40px;
+        background-color: transparent;
+        }
+      .sidebar-nav {
+        padding: 9px 0;
+      }
+    </style>
+    <link href="../../Common/css/benchboss.css" rel="stylesheet">
+    <link href="../../Common/css/gmail.css" rel="stylesheet">
+
+    <!-- jquery.mobile -->
+    <link href="../../Common/jquery.mobile/css/jquery.mobile-1.2.0.css" rel="stylesheet">
+    
+    <link href="../../Common/bootstrap-datetimepicker-master/css/datetimepicker.css" rel="stylesheet">
+    <link href="../../Common/bootstrap/css/bootstrap-responsive.css" rel="stylesheet">
+    <link rel="stylesheet" href="../../Common/FortAwesome-Font-Awesome-13d5dd3/css/font-awesome.min.css">
+    
+    <!-- HTML5 shim, for IE6-8 support of HTML5 elements -->
+    <!--[if lt IE 9]>
+      <script src="http://html5shim.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+
+
+    <!-- Fav and touch icons -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+    <link rel="apple-touch-icon-precomposed" sizes="144x144" href="../../Common/ico/bb-right-icon-145.png">
+    <link rel="apple-touch-icon-precomposed" sizes="114x114" href="../../Common/ico/apple-touch-icon-114-precomposed.png">
+      <link rel="apple-touch-icon-precomposed" sizes="72x72" href="../../Common/ico/bb-right-icon-72.png">
+                    <link rel="apple-touch-icon-precomposed" href="../../Common/ico/bb-right-icon-57.png">
+                                   <link rel="shortcut icon" href="../../Common/ico/favicon-right.png">
+  </head>
+
+  <body id="logo-background">
+
+    <div class="navbar navbar-inverse navbar-fixed-top">
+      <div class="navbar-inner">
+        <div class="container">
+        </div>
+        <div class="container-fluid">
+          <!-- <img src="../../Common/ico/favicon-right.png" width="30" height="30" class="img-rounded"> -->
+
+          <a style="padding:0px;" class="brand"
+     href="SUPERUSER_ADMIN_PAGE"><img src="../../Common/ico/favicon-right.png"
+     width="40" height="40"/></a> 
+<!--          <a style="padding:0px;" class="brand" href="SUPERUSER_ADMIN_PAGE"><img src="../hellfish.gif" width="40" height="40"/></a>-->
+          <span class="brand">LEAGUE_ACRO</span>
+          <ul class="nav nav-tabs">
+ 
+            <!-- Admin Tab -->
+            <li class="dropdown TAB_ADMIN">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown">Admin <b class="caret"></b></a>
+              <ul class="dropdown-menu">
+                  <li><a href="leagueInfoVariable.html"><i class="icon-info-sign"></i> League Info</a></li>
+                  <li><a href="rsvpAdminVariable.html"><i class="icon-envelope-alt"></i> RSVP Setup</a></li>
+                  <li><a href="variableSchedule.html"><i class="icon-calendar"></i> Schedule</a></li>
+                  <li><a href="goalieAdminVariable.html"><i class="icon-cogs"></i> Goalie Management</a></li>
+<!--                  <li id="beerTrackerOption" style="display:yes"><a href="beerTracker.html"><img src="../../Common/bootstrap/img/glyphicons_274_beer.png" style="width:14px;height=16px;"/>  Beer Tracker</a></li>-->
+                <li class="divider"></li>
+                  <li><a href="groupMail.html"><i class="icon-envelope"></i> Group Mail</a></li>
+                  <li><a href="events.html?action=main"><i class="icon-calendar"></i> Special Events</a></li>
+              </ul>
+            </li>
+
+            <!-- Roster Tab -->
+            <li class="dropdown TAB_ROSTER">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown">Roster <b class="caret"></b></a>
+              <ul class="dropdown-menu pull-left">
+                  <li><a href="bulkRoster-rsi.html"><i class="icon-group"></i> Roster</a></li>
+                  <li><a href="addPlayer.html?action=add"><i class="icon-user"></i> Add Player</a></li>
+                  <li><a href="bulkConfirm.html"><i class="icon-check"></i>
+                  <span class="muted ">Registration status</span></a></li>
+                  <li class="divider" style="display:BEER_MENU_DISPLAY;"></li>
+                  <li style="display:BEER_MENU_DISPLAY"><a href="beerRoster.html"><i class="icon-beer"></i> Beer Roster</a></li>
+              </ul>
+            </li> <!-- /Roster Tab -->
+
+            <!-- Attendance Tab-->
+            <li class="TAB_ATTENDANCE"><a href="whoscoming-divs.html">Attendance</a></li>
+
+          </ul> <!--/nav nav-tabs -->
+
+          <div class="nav-collapse collapse">
+            <p class="navbar-text pull-right">
+              Logged in as USERNAME
+            </p>
+          </div><!--/.nav-collapse -->
+        </div> <!-- /container-fluid -->
+      </div> <!--/navbar-inner -->
+    </div> <!--/navbar navbar-inverse navbar-fixed-top -->
+
+    <div class="container-fluid">
+<br>

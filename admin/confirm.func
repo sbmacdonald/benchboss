@@ -1,0 +1,222 @@
+#!/bin/bash
+. functions
+# -----------------------------------------------------------------------------
+# Print the guts of the roster management page
+function printBulkConfirmPage () {
+  tempRosterFile=${ROSTER}.tmp
+  
+  confirmedCount=`grep -c -i "^[A-z].*~[r|s]~[s|g]~c~[a|e]$" ${ROSTER}`
+  unconfirmedCount=`grep -c -i "^[A-z].*~[r|s]~[s|g]~u~[a|e]$" ${ROSTER}`
+  total=$(($confirmedCount + $unconfirmedCount))
+
+  if [ $confirmedCount -lt 3 ] ; then
+    confirmedSectionHeight="min-Height: 80px;"
+  fi
+  if [ $unconfirmedCount -lt 5 ] ; then
+    unconfirmedSectionHeight="min-Height: 100px;"    
+  fi
+
+echo "CGI_action: ${CGI_action} $1" >> /tmp/bulkConfig.log
+if [ "${CGI_action}" == "success" ] ; then
+  echo "<br><h5 style=\"margin: 0px;\"><span class=\"alert alert-success\">"
+  echo "Registration emails have been sent !"
+  echo "</span></h5><br>"
+fi
+  
+printf "<h3>Confirmations</h3>"
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# C O N F I R M E D, (sorted goalies first, then skaters)
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+cat << EEE
+<div class="accordion" id="roster">
+  <div class="accordion-group">
+   <div class="accordion-heading">
+     <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#roster" href="#confirmedSection"><b>Confirmed (${confirmedCount}/${total})</b></a>
+   </div>
+   <div id="confirmedSection" class="accordion-body collapse out">
+     <div class="accordion-inner" style="${confirmedSectionHeight}">
+     
+<table id="confirmedList" cellpadding="0" cellspacing="0" border="0">
+
+<tbody>
+EEE
+if [ ${confirmedCount} -gt 0 ] ; then
+  for player in `grep -i "~[r|s]~[g|s]~c~[a|e]$" ${ROSTER} | sort -u -t"~" -k1 | sort -t"~" -k5 -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do
+    playerPos=`getPlayerPosition $player`
+    printf "<tr id=\"$player\">\n"
+    printf "<td width=\"10\">\n"
+    printf "</td><td><label for=\"cb_$player\"> %s" "`getFullName $player`" 
+    if [ `isSpare $player` -eq 1 ] ; then
+      printf "<i class=\"muted\"> (spare)</i>"
+    fi
+    if [ `isGoalie $player` -eq 0 ] ; then
+      printf "<i class=\"muted\"> (goalie)</i>"
+    fi
+    printf "</label></td>"
+    printf "</tr>"
+  done
+else
+  printf "<tr rowspan=\"2\"><i class=\"muted\">nobody yet</i></tr>"
+fi
+cat << EOW
+</tbody>
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="confirmedSection" -->
+</div> <!-- /class="accordion-group" -->
+EOW
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# U N C O N F I R M E D !
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+if [ $unconfirmedCount -eq 0 ] ; then
+  unconfirmedSelectorEnabled="disabled" 
+fi
+
+cat << EOE
+  <div class="accordion-group">
+    <div class="accordion-heading">
+      <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#roster" href="#unconfirmedSection"><b>Unconfirmed ($unconfirmedCount/${total}):</b></a>
+    </div>
+    <div id="unconfirmedSection" class="accordion-body collapse out">
+      <div class="accordion-inner"  style="${unconfirmedSectionHeight}">
+        <div class="form-actions" style="margin:0px; padding:0px;">
+          <div class="btn-group">
+            <button $unconfirmedSelectorEnabled class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="unconfirmedGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></button>
+            <ul class="dropdown-menu">
+              <li><a onclick="toggleGroup2(true,'unconfirmedGroup','unconfirmed')">all</a></li>
+              <li><a onclick="toggleGroup2(false,'unconfirmedGroup','unconfirmed')">none</a></li>
+            </ul>
+          </div> <!-- / class="btn-group" -->
+
+          <div class="btn-group">
+            <button id="unconfirmedGroupMenu" class="btn btn-primary btn-small dropdown-toggle" style="border-radius: 0px; display: none;" data-toggle="dropdown"><i class="icon-user icon-white">&nbsp;</i> Actions <span class="icon-caret-down"></span></button>
+            <ul class="dropdown-menu">
+              <li id="move"><a href="bulkConfirm.html" onclick="perform('unconfirmedList','mtc')"><i class="icon-ok text-success"></i> <span class="text-success">mark confirmed</span></a></li>
+              <li id="reconfirm"><a onclick="perform('unconfirmedList','reconfirm')"><i class="icon-envelope"></i> <span>resend confirmation</span></a></li>
+            </ul>
+          </div> <!-- / class="btn-group" -->
+        </div> <!-- / class="form-actions" -->
+
+<table class="table table-hover table-condensed" id="unconfirmedList" cellpadding="2" cellspacing="0" border="0">
+<tbody>
+EOE
+
+  for player in `grep -i "~[r|s]~[s|g]~u~[a|e]$" ${ROSTER} | sort -u -t"~" -k1 | sort -t"~" -k5 -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do 
+
+    printf "<tr id=\"$player\">\n"
+    printf "<td width=\"10\">\n"
+    printf "<input type=\"checkbox\" id=\"cb_$player\" name=\"unconfirmed\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\">"
+    
+    printf "</td><td><label for=\"cb_$player\"> %s" "`getFullName $player`"
+    if [ `isSpare $player` -eq 1 ] ; then
+      printf "<i class=\"muted\"> (spare)</i>"
+    fi
+    if [ `isGoalie $player` -eq 0 ] ; then
+      printf "<i class=\"muted\"> (goalie)</i>"
+    fi
+    printf "</label></td>\n"
+    printf "</tr>"
+  done
+
+cat << EOW
+</tbody>
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="unconfirmedSection" -->
+</div> <!-- /class="accordion-group" -->
+
+</div> <!-- /class="accordion" -->
+
+<script type="text/javascript">
+
+function perform(table, x){
+  var selected = \$("table#" + table).find("tr input[type='checkbox']:checked");
+  //\$(selected).each(function(e){});
+  var playerList = [];
+  selected.each(
+    function(i,e){
+      playerList.push(\$(e).parent().parent().attr('id'));
+    }
+  );
+
+  //alert(playerList.join(";"));
+  //alert('action=' + x)
+
+  //var request = \$.ajax({
+  \$.ajax({ 
+     type: "POST",
+     async: true,
+     url: "player.cgi",
+     data: { action: x , plist: playerList.join(";") }
+     });
+     
+   window.location.assign('bulkConfirm.html?action=success'); 
+}
+
+
+function unhideMenu(group)
+{
+  //val = document.getElementById('goalieGroup').checked ? true : false;
+  //document.getElementById('goalieMenu').disabled = !val;
+  menuDisp = document.getElementById(group).checked ? "inline" : "none";
+  addDisp  = document.getElementById(group).checked ? "none" : "inline";
+  document.getElementById(group + 'Menu').style.display = menuDisp;
+}
+
+function toggleGroup2(all,group,rowName)
+{
+  val = all
+  if(all){
+    document.getElementById(group).checked = true;
+  }
+  else{
+    document.getElementById(group).checked = false;
+  }
+  trclass = document.getElementById(group).checked ? "row-selected" : ""
+  elements = document.getElementsByName(rowName)
+  for(e=0; e < elements.length; e++) {
+    elements[e].checked=val;
+    // Toggle hover class
+    //var tr = elements[e].parentNode.parentNode;
+    //tr.className = trclass;
+    highlightRow(elements[e], group);
+  }
+  // TODO: Unhide/enable menu
+  unhideMenu(group);
+}
+
+function highlightRow(e, group)
+{
+  trclass = document.getElementById(group).checked ? "row-selected" : ""
+  var tr = e.parentNode.parentNode;
+  tr.className = trclass;
+}
+
+function enableMenu(eName)
+{
+  elements = document.getElementsByName(eName)
+  var rowsSelected=0;
+  for(e=0;e<elements.length;e++) {
+    rowsSelected += elements[e].checked ? 1 : 0;
+  }
+  //document.getElementById('submenu').disabled = rowsSelected > 0 ? false : true;
+  document.getElementById(eName + 'GroupMenu').style.display = rowsSelected > 0 ? "inline" : "none";
+}
+
+function selectRow(e)
+{
+  //alert(e.getAttribute('data-player-type'));
+  trclass = e.checked ? "row-selected" : ""
+  var tr = e.parentNode.parentNode;
+  tr.className = trclass;
+  //alert('e.name:' + e.getAttribute('name'));
+  enableMenu(e.getAttribute('name'));
+}
+
+</script>
+EOW
+}

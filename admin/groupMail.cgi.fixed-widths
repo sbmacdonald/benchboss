@@ -1,0 +1,207 @@
+#!/bin/bash
+#
+#
+. /home/www/cgi-bin/include/functions
+. functions
+
+leagueLogFile="${DATA_DIR}/leagueInfo.log"
+
+cgiVars
+
+#-----------------------------------------------------------------------------
+# $1 == html message file
+# $2 == txt message file
+function writeMessageFile () {
+  #echo $QUERY_STRING > /tmp/querystring2
+  rawMessage="${MAIL_DIR}/GroupMail-`date '+%a-%b-%d-%H:%M.raw'`"
+
+  echo $CGI_message > ${rawMessage}
+
+  cat ${rawMessage} | sed "s|+| |g" | sed "s|%0A|<br>|g" | \
+      sed -e "s/%\([0-9A-F][0-9A-F]\)/\\\\\x\1/g" | xargs -0 echo -e >>  $1
+  cat ${rawMessage} | sed "s|+| |g" | \
+      sed -e "s/%\([0-9A-F][0-9A-F]\)/\\\\\x\1/g" | xargs -0 echo -e >> $2
+}
+
+# Depending on the section being upated, assume all values have changed and
+# update them
+if [ ! -z ${CGI_section} ] ; then
+  case "$CGI_section" in
+   groupEmail)
+
+
+  echo $QUERY_STRING > /tmp/querystring
+  echo $CGI_message > /tmp/rawmessage
+
+      htmlmsg="${MAIL_DIR}/GroupMail-`date '+%a-%b-%d-%H:%M.html'`"
+      txtmsg="${MAIL_DIR}/GroupMail-`date '+%a-%b-%d-%H:%M.txt'`"
+      touch ${htmlmsg} ${txtmsg}
+      chmod 777 ${htmlmsg} ${txtmsg}
+      printf "<meta http-equiv=\"Content-Type\" " >> ${htmlmsg}
+      printf "content=\"text/html; charset=iso-8859-1\">" >> ${htmlmsg} 
+
+      . $LEAGUE_CFG
+
+      logInfo "[$REMOTE_USER]: Sending group email:  Subject: $CGI_subject files: ${htmlmsg} ${txtmsg}" >> $leagueLogFile
+
+      writeMessageFile ${htmlmsg} ${txtmsg}
+
+      if [ ! -z ${CGI_emailToRegulars} ] ; then
+        ToList=`awk -F~ '{if($1 !~ /^#/ && $4 ~ /r/ ){printf "--bcc %s ",$1}}' $ROSTER`
+        # debugging
+        #ToList+=" --bcc scottmac13@gmail.com"
+        #ToList+=" --bcc scottmac13@yahoo.com --bcc smac1999@hotmail.com"
+      fi
+
+      if [ ! -z ${CGI_emailToSpares} ] ; then
+	ToList+=`awk -F~ '{if($1 !~ /^#/ && $4 ~ /s/ ){printf "--bcc %s ",$1}}' $ROSTER`
+      fi
+
+
+      # Send the email 
+      if [ "${replyToOrganizer}" == "true" ] ; then
+        ${SMPT_LIB_DIR}/smtp-cli-3.6 --missing-modules-ok \
+            --host=${EmailAccountHost} -enable-auth \
+            --subject "$CGI_subject" \
+            --reply-to "<${OrganizerEmail}>" \
+            --user ${EmailAccountAddress} --pass ${EmailAccountPass} \
+  	    $ToList --from "${EmailAccountName} <${EmailAccountAddress}>"  \
+            --body-html ${htmlmsg} --body-plain ${txtmsg}
+      else
+        ${SMPT_LIB_DIR}/smtp-cli-3.6 --missing-modules-ok \
+            --host=${EmailAccountHost} -enable-auth \
+            --subject "$CGI_subject" \
+            --user ${EmailAccountAddress} --pass ${EmailAccountPass} \
+  	    $ToList --from "${EmailAccountName} <${EmailAccountAddress}>"  \
+            --body-html ${htmlmsg} --body-plain ${txtmsg}
+      fi
+
+      logInfo "[$REMOTE_USER]: group email sent successfully" >> $leagueLogFile
+
+    ;;
+  esac
+fi
+
+# Pick up the new values
+. $LEAGUE_CFG
+
+
+# Start building the web page that will be displayed
+htmlHeader
+
+sed -e "s|LEAGUE_ACRO|${LEAGUE_ACRO}|g" \
+    -e "s|USERNAME|$REMOTE_USER|g" \
+    -e "s|MENU_4|active|" template-header.html
+
+cat << EOF
+<html>
+<head>
+  <script type="text/javascript" src="libs/jquery-1.4.4.min.js"></script>  
+<script  type="text/javascript">  
+function urlencode()
+{
+var txt=document.getElementById("message").value;
+var encodetxt=encodeURI(txt)
+document.getElementById("message").innerHTML=encodetxt
+}  
+
+function urlencodee () {  
+  str = document.getElementById("message").value;
+  encodedString=encodeURIComponent(str);
+  encodedString.replace(/~/g, '%7E').replace(/\!/g, '%21').replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29').repl\
+ace(/\*/g, '%2A').replace(/"/g,'%22').replace(/%20/g, '+');
+  document.getElementById("message").value=encodedString;
+}  
+</script>
+</head>
+<body>
+EOF
+
+#<table width="500">
+#<tr>
+#<td>
+#<form action="" method="POST" accept-charset="ISO-8859-1">
+#<!-- <fieldset style="background-color: #F2EFE9; _position : relative; _padding-top : 20px;_padding-bottom : 15px;"> -->
+#<fieldset>
+#<legend>Send Goup Email:</legend>
+#<input name="section" value="groupEmail" type="hidden">
+#<table>
+#<tr>
+#  <td align="right" size="68"><b>To:</b></td>
+#  <td class="inputLeft">
+#   <input type="checkbox" name="emailToRegulars" value="regulars" checked="y"/> 
+#   regulars
+#   <input type="checkbox" name="emailToSpares" value="spares" checked="y"/> spares
+#  </td>
+#</tr>
+#<tr>
+#  <td align="right" class="input"><b>Subject:</b></td>
+#  <td>
+#    <input name="subject" type="text" size="68"/ placeholder="subject">
+#  </td>
+#</tr>
+#<tr>
+#<td>
+#</td>
+#<td>
+#<textarea rows="10" cols="80" name="message" id="message"></textarea>
+#<td>  
+#</tr>
+#</table>
+
+#<input type="submit" value="Send"  onclick="urlencodee()"/>
+
+#</fieldset>
+#</form>
+
+#</td>
+#</tr>
+
+#</table>
+
+cat<<EOF
+<fieldset>
+<legend>Send Goup Email:</legend>
+    <form class="form-horizontal" style="width: 70px;"action="" method="POST" accept-charset="ISO-8859-1">
+      <div class="control-group" style="width: 70px" >
+        <label class="control-label" style="width: 70px" for="inputEmail">To:</label>
+        <div class="controls" style="margin-left: 75px;">
+          <label class="checkbox"><input type="checkbox"> Regulars</label>
+          <label class="checkbox"><input type="checkbox"> Spares</label>
+        </div>
+      </div>
+
+      <div class="control-group" style="width: 70px" >
+        <label class="control-label" style="width: 70px" for="subject">Reply-To:</label>
+        <div class="controls" style="margin-left: 75px;">
+          <input type="email" id="replyTo" class="input-xlarge" placeholder="">
+        </div>
+      </div>
+
+      <div class="control-group" style="width: 70px" >
+        <label class="control-label" style="width: 70px" for="subject">Subject:</label>
+        <div class="controls" style="margin-left: 75px;">
+          <input type="text" id="subject" class="input-xlarge" placeholder="Subject">
+        </div>
+      </div>
+
+      <div class="control-group" style="width: 70px" >
+        <label class="control-label" style="width: 70px" for="message">Message:</label>
+        <div class="controls" style="margin-left: 75px;">
+          <textarea rows="10" class="input-xlarge" name="message" id="message"></textarea>
+        </div>
+      </div>
+      <div class="control-group" style="width: 70px" >
+        <div class="controls" style="margin-left: 75px;">
+         <button type="submit" class="btn">Send</button>
+        </div>
+      </div>
+
+    </form>
+</fieldset>
+
+</body>
+</html>
+EOF
+
+cat template-footer.html

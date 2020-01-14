@@ -1,0 +1,13 @@
+Hi PLAYER_NAME,
+
+We haven't heard from you this week, there are *SPOTS* spots for this *GAME_DAY* (GAME_TIME) at the GAME_LOCATION
+
+Click one of the links below to let us know if you want to come:
+
+*I'd like to come
+* <URL_BASE/rsvp.cgi?gid=GAME_ID&email=PLAYER_EMAIL&action=request>
+     *I can't make it
+*<URL_BASE/rsvp.cgi?gid=GAME_ID&email=PLAYER_EMAIL&action=out>
+
+
+please remove me from the list<URL_BASE/rsvp.cgi?email=PLAYER_EMAIL&action=removeMe>

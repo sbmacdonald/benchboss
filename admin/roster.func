@@ -1,0 +1,474 @@
+#!/bin/bash
+
+# -----------------------------------------------------------------------------
+# Print the guts of the roster management page
+function printBulkRosterPage () {
+  tempRosterFile=${ROSTER}.tmp
+  
+  goalieCount=`grep -c -i "^[A-z].*~[r|s]~[g]$" ${ROSTER}`
+  inactiveCount=`grep -c -i "^[A-z].*~[r|s]~[g]$" ${ROSTER}`
+  sparesCount=`grep -c -i "^[A-z].*~[s]~[s]$" ${ROSTER}`
+  regularsCount=`grep -c -i "^[A-z].*~[r]~[s]$" ${ROSTER}`
+  urlParams="addPlayer.cgi?action=add"
+  editLink="window.showModalDialog('$urlParams', window, 'dialogWidth: 450px; dialogHeight: 300px; resizable: yes; center:no;')"
+
+
+printf "<h3>Roster Manager</h3>"
+
+#if [ `wc -l ${ROSTER} | awk '{print $1}'` -eq 0 ] ; then
+#  . forms
+#  printRosterTemplateDownloadForm
+#  #printRosterUploadForm
+#fi
+
+printf "<form method=\"post\" action=\"addPlayer.cgi?action=add\">"
+printf "<input type=\"hidden\" name=\"action\" id=\"action\" value=\"add\">"
+printf "<input class=\"btn btn-primary\" type=\"submit\" value=\"Add a new Player &raquo;\" >"
+printf "</form>"
+printf "<hr>\n"
+
+cat<<EOF
+<!--
+<div class="form-actions" style="margin:0px; padding:0px;">
+    <div class="btn-group">
+      <button class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></button>
+      <ul class="dropdown-menu">
+        <li><a onclick="alert('clicked all')">all</a></li>
+        <li><a onclick="alert('clicked none')">none</a></li>
+      </ul>
+    </div>
+
+  <div class="btn-group">
+    <button class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><i class="icon-user icon-white">&nbsp;</i> Actions <span class="icon-caret-down"></span></button>
+    <ul class="dropdown-menu">
+      <li id="edit"><a href="$editLink"><i class="icon-edit text-info"></i> <span class="text-info">edit</span></a></li>
+      <li id="move"><a href="$moveToLink"><i class="icon-upload-alt text-success"></i> <span class="text-success">move to regulars</span></a></li>
+      <li id="move"><a href="$moveToLink"><i class="icon-download-alt text-warning"></i> <span class="text-warning">move to spares</span></a></li>
+      <li id="markInactive"><a href="#"><i class="icon-pause muted"></i> <span class="muted">mark inactive</span></a></li>
+      <li class="divider"></li>
+      <li id="remove"><a href="$deleteLink" ><i class="icon-trash text-error"></i> <span class="text-error">remove</span></a></li>
+    </ul>
+      </div>
+    
+</div>
+-->
+EOF
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# G O A L I E S !
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+cat << EEE
+<div class="row-fluid" style="padding:0px 0px 10px 0px;">
+<div class="accordion" id="roster">
+  <div class="accordion-group">
+   <div class="accordion-heading">
+     <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#roster" href="#goaliesSection"><b>Goalies($goalieCount)</b></a>
+   </div>
+   <div id="goaliesSection" class="accordion-body collapse out">
+     <div class="accordion-inner">
+       <div class="form-actions" style="margin:0px; padding:0px;">
+         <div class="btn-group">
+           <button class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="goalieGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></span></input></button>
+           <ul class="dropdown-menu">
+             <li><a onclick="toggleGroup2(true, 'goalieGroup','goalie')">all</a></li>
+             <li><a onclick="toggleGroup2(false,'goalieGroup','goalie')">none</a></li>
+             <li><a onclick="selectListByClass('goalieList','r','goalieGroup')">regulars</a></li>
+             <li><a onclick="selectListByClass('goalieList','s','goalieGroup')">spares</a></li>
+           </ul>
+         </div>
+
+         <div class="btn-group">
+           <button id="goalieGroupMenu" class="btn btn-small btn-primary dropdown-toggle" style="border-radius: 0px; display: none;" data-toggle="dropdown"><i class="icon-user icon-white">&nbsp;</i> Actions <span class="icon-caret-down"></span></button>
+           <ul class="dropdown-menu">
+             <li id="edit"><a href="$editLink"><i class="icon-edit text-info"></i> <span class="text-info">edit</span></a></li>
+             <li id="move"><a href="$moveToLink"><i class="icon-upload-alt text-success"></i> <span class="text-success">move to regulars</span></a></li>
+             <li id="move"><a href="$moveToLink"><i class="icon-download-alt text-warning"></i> <span class="text-warning">move to spares</span></a></li>
+             <li id="markInactive"><a href="#"><i class="icon-pause muted"></i> <span class="muted">mark inactive</span></a></li>
+             <li class="divider"></li>
+             <li id="remove"><a href="$deleteLink" ><i class="icon-trash text-error"></i> <span class="text-error">remove</span></a></li>
+           </ul>
+         </div> <!-- / class="btn-group" -->
+       </div> <!-- / class="form-actions" -->
+
+
+<table class="table table-hover table-condensed" id="goalieList" cellpadding="2" cellspacing="0" border="0">
+
+<tbody>
+EEE
+  for player in `grep -i "~[r|s]~[g]$" ${ROSTER} | sort -u -t"~" -k1 | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do 
+    deleteLink="${rosterUrl}?action=delete&amp;email=$player"
+    firstName=`getFirstName $player`
+    lastName=`getLastName $player`
+    playerPosition=`getPlayerPosition $player`
+    playerType=`getPlayerType $player`
+    urlParams="addPlayer.cgi?action=edit&fname=$firstName&lname=$lastName&email=$player&pos=$playerPosition&type=$playerType"
+    editLink="${addPlayerUrl}?action=edit&fname=$firstName&lname=$lastName&email=$player&pos=$playerPosition&type=$playerType"
+    if [ "$playerType" == "regular" ] || [ "$playerType" == "r" ] ; then
+      moveToLink="${rosterUrl}?action=update&fname=$firstName&lname=$lastName&email=$player&newemail=$player&pos=$playerPosition&type=s"
+      moveToText="spares"
+      moveToIcon="icon-download-alt"
+    else
+      moveToLink="${rosterUrl}?action=update&fname=$firstName&lname=$lastName&email=$player&newemail=$player&pos=$playerPosition&type=r"
+      moveToText="regulars"
+      moveToIcon="icon-upload"
+    fi
+
+    printf "<tr id=\"$player\">\n"
+    printf "<td width=\"10\">\n"
+    printf "<input type=\"checkbox\" id=\"cb_$player\"  class=\"$playerType\" data-player-type=\"$playerType\" name=\"goalie\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\">"
+    
+    printf "</td><td><label for=\"cb_$player\"> %s" "`getFullName $player`" 
+    if [ `isSpare $player` -eq 1 ] ; then
+      printf "<i class="muted"> (spare)</i>"
+    fi
+    printf "</label></td>"
+    //printf "</td>"
+    printf "</tr>"
+  done
+
+cat << EOW
+</tbody>
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="goaliesSection" -->
+</div> <!-- /class="accordion-group" -->
+EOW
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# R E G U L A R S 
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+cat << EEE
+  <div class="accordion-group">
+    <div class="accordion-heading">
+      <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#roster" href="#regularsSection"><b>Regulars($regularsCount):</b></a>
+    </div>
+    <div id="regularsSection" class="accordion-body collapse out">
+      <div class="accordion-inner">
+        <div class="form-actions" style="margin:0px; padding:0px;">
+          <div class="btn-group">
+            <button class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="regularGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></button>
+            <ul class="dropdown-menu">
+              <li><a onclick="toggleGroup2(true,'regularGroup','regular')">all</a></li>
+              <li><a onclick="toggleGroup2(false,'regularGroup','regular')">none</a></li>
+            </ul>
+          </div> <!-- /class="btn-group" -->
+
+          <div class="btn-group">
+            <button id="regularGroupMenu" class="btn btn-small dropdown-toggle" style="border-radius: 0px; display: none;" data-toggle="dropdown"><i class="icon-user icon-white">&nbsp;</i> Actions <span class="icon-caret-down"></span></button>
+              <ul class="dropdown-menu">
+                <li id="edit"><a href="$editLink"><i class="icon-edit text-info"></i> <span class="text-info">edit</span></a></li>
+                <li id="move"><a href="$moveToLink"><i class="icon-download-alt text-warning"></i> <span class="text-warning">move to spares</span></a></li>
+                <li id="markInactive"><a href="#"><i class="icon-pause muted"></i> <span class="muted">mark inactive</span></a></li>
+                <li class="divider"></li>
+                <li id="remove"><a href="$deleteLink" ><i class="icon-trash text-error"></i> <span class="text-error">remove</span></a></li>
+              </ul>
+          </div> <!-- / class="btn-group" -->
+          <div class="btn-group">
+            <button id="addRegular" class="btn btn-small" style="border-radius: 0px;"><span class="icon-plus"></span>&nbsp; <span class="icon-user"></span></button>
+          </div>
+        </div> <!-- / class="form-actions" -->
+
+<table class="table table-hover table-condensed">
+<tbody>
+EEE
+
+#for player in `sort -t"~" -k1 $comingFile | awk -F"~" '{printf "%s\n",$2}'` ; do
+  for player in `grep -i "~[r]~[s]$" ${ROSTER} | sort -u -t"~" -k1 |sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do 
+    deleteLink="${rosterUrl}?action=delete&amp;email=$player"
+    firstName=`getFirstName $player`
+    lastName=`getLastName $player`
+    playerPosition=`getPlayerPosition $player`
+    playerType=`getPlayerType $player`
+    urlParams="addPlayer.cgi?action=edit&fname=$firstName&lname=$lastName&email=$player&pos=$playerPosition&type=$playerType"
+    editLink="${addPlayerUrl}?action=edit&fname=$firstName&lname=$lastName&email=$player&pos=$playerPosition&type=$playerType"
+    moveToLink="${rosterUrl}?action=update&fname=$firstName&lname=$lastName&email=$player&newemail=$player&pos=$playerPosition&type=s"
+    moveToText="spares"
+    moveToIcon="icon-download-alt"
+    printf "<tr id=\"$player\">\n"
+    printf "<td width=\"10\">\n"
+    printf "<input type=\"checkbox\" id=\"cb_$player\" name=\"regular\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\">"
+    printf "</td><td><label for=\"cb_$player\"> %s" "`getFullName $player`"
+    printf "</label></td>"
+    printf "</tr>"
+  done
+cat << EOW
+</tbody>
+</table>
+
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="regularsSection" -->
+</div> <!-- /class="accordion-group" -->
+EOW
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# S P A R E S !
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+cat << EOE
+  <div class="accordion-group">
+    <div class="accordion-heading">
+      <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#roster" href="#sparesSection"><b>Spares($sparesCount):</b></a>
+    </div>
+    <div id="sparesSection" class="accordion-body collapse out">
+      <div class="accordion-inner">
+        <div class="form-actions" style="margin:0px; padding:0px;">
+          <div class="btn-group">
+            <button class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="spareGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></button>
+            <ul class="dropdown-menu">
+              <li><a onclick="toggleGroup2(true,'spareGroup','spare')">all</a></li>
+              <li><a onclick="toggleGroup2(false,'spareGroup','spare')">none</a></li>
+            </ul>
+          </div> <!-- / class="btn-group" -->
+
+          <div class="btn-group">
+            <button id="spareGroupMenu" class="btn btn-small dropdown-toggle" style="border-radius: 0px; display: none;" data-toggle="dropdown"><i class="icon-user icon-white">&nbsp;</i> Actions <span class="icon-caret-down"></span></button>
+            <ul class="dropdown-menu">
+              <li id="edit"><a href="$editLink"><i class="icon-edit text-info"></i> <span class="text-info">edit</span></a></li>
+              <li id="move"><a href="#" onclick="modifyPlayer('mtr');"><i class="icon-upload-alt text-success"></i> <span class="text-success">move to regulars</span></a></li>
+              <li id="markInactive"><a href="#"><i class="icon-pause muted"></i> <span class="muted">mark inactive</span></a></li>
+              <li class="divider"></li>
+              <li id="remove"><a href="$deleteLink" ><i class="icon-trash text-error"></i> <span class="text-error">remove</span></a></li>
+            </ul>
+          </div> <!-- / class="btn-group" -->
+        </div> <!-- / class="form-actions" -->
+
+<table class="table table-hover table-condensed" cellpadding="2" cellspacing="0" border="0">
+<tbody>
+EOE
+if [ `grep -c "~[s]~[s]$" ${ROSTER}` -gt 0 ] ; then
+  for player in `grep -i "~[s]~[s]$" ${ROSTER} | sort -u -t"~" -k1 | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do 
+    deleteLink="${rosterUrl}?action=delete&amp;email=$player"
+    firstName=`getFirstName $player`
+    lastName=`getLastName $player`
+    playerPosition=`getPlayerPosition $player`
+    playerType=`getPlayerType $player`
+    urlParams="addPlayer.cgi?action=edit&fname=$firstName&lname=$lastName&email=$player&pos=$playerPosition&type=$playerType"
+    editLink="${addPlayerUrl}?action=edit&fname=$firstName&lname=$lastName&email=$player&pos=$playerPosition&type=$playerType"
+    moveToLink="${rosterUrl}?action=update&fname=$firstName&lname=$lastName&email=$player&newemail=$player&pos=$playerPosition&type=r"
+    moveToText="regulars"
+    moveToIcon="icon-upload"
+
+    printf "<tr id=\"$player\">\n"
+    printf "<td width=\"10\">\n"
+    printf "<input type=\"checkbox\" id=\"cb_$player\" name=\"spare\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\">"
+    
+    printf "</td><td><label for=\"cb_$player\"> %s" "`getFullName $player`" 
+    printf "</label></td>\n"
+    printf "</tr>"
+  done
+else
+
+  printf "<tr rowspan=\"2\"><span class=\"muted\">none defined</span></tr>\n"
+fi
+
+cat << EOW
+</tbody>
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="sparesSection" -->
+</div> <!-- /class="accordion-group" -->
+
+EOW
+
+# ----------------------------------------------------------------------------
+# TODO: Add in an optional section for Inactive players
+inactive=`grep -c "~[i]~[g|s]$" ${ROSTER} `
+if [ $inactive -gt 0 ] ; then
+cat << EOE
+  <div class="accordion-group">
+    <div class="accordion-heading">
+      <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#roster" href="#sparesSection"><b>Spares($sparesCount):</b></a>
+    </div>
+    <div id="sparesSection" class="accordion-body collapse out">
+      <div class="accordion-inner">
+        <div class="form-actions" style="margin:0px; padding:0px;">
+          <div class="btn-group">
+            <button class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="spareGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></button>
+            <ul class="dropdown-menu">
+              <li><a onclick="toggleGroup2(true,'spareGroup','spare')">all</a></li>
+              <li><a onclick="toggleGroup2(false,'spareGroup','spare')">none</a></li>
+            </ul>
+          </div> <!-- / class="btn-group" -->
+
+          <div class="btn-group">
+            <button id="spareGroupMenu" class="btn btn-small dropdown-toggle" style="border-radius: 0px; display: none;" data-toggle="dropdown"><i class="icon-user icon-white">&nbsp;</i> Actions <span class="icon-caret-down"></span></button>
+            <ul class="dropdown-menu">
+              <li id="edit"><a href="$editLink"><i class="icon-edit text-info"></i> <span class="text-info">edit</span></a></li>
+              <li id="move"><a href="#" onclick="modifyPlayer('mtr');"><i class="icon-upload-alt text-success"></i> <span class="text-success">move to regulars</span></a></li>
+              <li id="markInactive"><a href="#"><i class="icon-pause muted"></i> <span class="muted">mark inactive</span></a></li>
+              <li class="divider"></li>
+              <li id="remove"><a href="$deleteLink" ><i class="icon-trash text-error"></i> <span class="text-error">remove</span></a></li>
+            </ul>
+          </div> <!-- / class="btn-group" -->
+        </div> <!-- / class="form-actions" -->
+
+<table class="table table-hover table-condensed" cellpadding="2" cellspacing="0" border="0">
+<tbody>
+EOE
+  for player in `grep -i "~[i]~[s|g]$" ${ROSTER} | sort -u -t"~" -k1 | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do 
+    deleteLink="${rosterUrl}?action=delete&amp;email=$player"
+    firstName=`getFirstName $player`
+    lastName=`getLastName $player`
+    playerPosition=`getPlayerPosition $player`
+    playerType=`getPlayerType $player`
+    urlParams="addPlayer.cgi?action=edit&fname=$firstName&lname=$lastName&email=$player&pos=$playerPosition&type=$playerType"
+    editLink="${addPlayerUrl}?action=edit&fname=$firstName&lname=$lastName&email=$player&pos=$playerPosition&type=$playerType"
+    moveToLink="${rosterUrl}?action=update&fname=$firstName&lname=$lastName&email=$player&newemail=$player&pos=$playerPosition&type=r"
+    moveToText="regulars"
+    moveToIcon="icon-upload"
+
+    printf "<tr id=\"$player\">\n"
+    printf "<td width=\"10\">\n"
+    printf "<input type=\"checkbox\" id=\"cb_$player\" name=\"spare\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\">"
+    
+    printf "</td><td><label for=\"cb_$player\"> %s" "`getFullName $player`" 
+    printf "</label></td>\n"
+    printf "</tr>"
+  done
+
+
+cat << EOW
+</tbody>
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="sparesSection" -->
+</div> <!-- /class="accordion-group" -->
+</div>
+EOW
+fi
+
+
+# ----------------------------------------------------------------------------
+# Close off the Accordion group and add in the javascript
+
+cat <<EOW
+</div> <!-- /class="accordion" -->
+
+<script type="text/javascript">
+function unhideMenu(group)
+{
+  //val = document.getElementById('goalieGroup').checked ? true : false;
+  //document.getElementById('goalieMenu').disabled = !val;
+  val = document.getElementById(group).checked ? "inline" : "none";
+  document.getElementById(group + 'Menu').style.display = val;
+}
+
+function toggleGroup(group,rowName)
+{
+  val = document.getElementById(group).checked ? true : false;
+  trclass = document.getElementById(group).checked ? "row-selected" : ""
+  elements = document.getElementsByName(rowName)
+  for(e=0; e < elements.length; e++) {
+    elements[e].checked=val;
+    // Toggle hover class
+    //var tr = elements[e].parentNode.parentNode;
+    //tr.className = trclass;
+    highlightRow(elements[e], group);
+  }
+  // TODO: Unhide/enable menu
+  //document.getElementById('submenu').style.display = (document.getElementById('goalieGroup').checked) ? "inline" : "none";
+  document.getElementById('edit').style.display = document.getElementById(group).checked ? "none" : "inline";
+  unhideMenu(group);
+}
+
+function toggleGroup2(all,group,rowName)
+{
+  val = all
+  if(all){
+    document.getElementById(group).checked = true;
+  }
+  else{
+    document.getElementById(group).checked = false;
+  }
+  trclass = document.getElementById(group).checked ? "row-selected" : ""
+  elements = document.getElementsByName(rowName)
+  for(e=0; e < elements.length; e++) {
+    elements[e].checked=val;
+    // Toggle hover class
+    //var tr = elements[e].parentNode.parentNode;
+    //tr.className = trclass;
+    highlightRow(elements[e], group);
+  }
+  // TODO: Unhide/enable menu
+  //document.getElementById('submenu').style.display = (document.getElementById('goalieGroup').checked) ? "inline" : "none";
+  document.getElementById('edit').style.display = document.getElementById(group).checked ? "none" : "inline";
+  unhideMenu(group);
+}
+
+function highlightRow(e, group)
+{
+  trclass = document.getElementById(group).checked ? "row-selected" : ""
+  var tr = e.parentNode.parentNode;
+  tr.className = trclass;
+}
+
+function enableMenu(eName)
+{
+  elements = document.getElementsByName(eName)
+  var rowsSelected=0;
+  for(e=0;e<elements.length;e++) {
+    rowsSelected += elements[e].checked ? 1 : 0;
+  }
+  document.getElementById('edit').style.display = rowsSelected > 1 ? "none" : "inline";
+  //document.getElementById('submenu').disabled = rowsSelected > 0 ? false : true;
+  document.getElementById(eName + 'GroupMenu').style.display = rowsSelected > 0 ? "inline" : "none";
+}
+
+function selectRow(e)
+{
+  //alert(e.getAttribute('data-player-type'));
+  trclass = e.checked ? "row-selected" : ""
+  var tr = e.parentNode.parentNode;
+  tr.className = trclass;
+  //alert('e.name:' + e.getAttribute('name'));
+  enableMenu(e.getAttribute('name'));
+}
+
+function selectListByClass(tid,c,group) {
+
+   // Clear any selected checkboxes
+  \$("table#" + tid + " :checkbox").each(
+  function(i,e){
+    \$(e).prop('checked', false);
+    \$(e).parent().parent().removeClass('row-selected');
+  });
+
+  // Filter rows with the specified class 's'
+  var items = \$('table#' + tid + ' .' + c);
+
+  //\$("table#" + tid + " ." + c).each(
+  items.each(
+    function(i,e){
+      \$(e).prop('checked', true);
+      //alert(\$(e).parent().parent().className);
+      \$(e).parent().parent().toggleClass('row-selected');
+      }
+  );
+
+  // Unhide the menu if is should be
+  if(items.length > 0){
+    document.getElementById(group).checked = true;
+    unhideMenu(group);
+  }
+}
+
+function modifyPlayer(operation, player) {
+  var url="http://xdal.org/benchboss/${LEAGUE_DIR}/admin/playerMenuHandler.cgi";
+  var data;
+  switch(operation){
+    case 'mts':
+       data = 'action=mt&player=me@here.com';
+       break;
+    case 'mtr':
+       data = 'action=mtr&player=me@here.com';
+       break;
+    case 'mti':
+       data = 'action=mti&player=me@here.com';
+       break;
+    case 'rm':
+       break;
+  }
+  $.get(url, data );
+}
+</script>
+EOW
+}

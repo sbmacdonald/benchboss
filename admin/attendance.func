@@ -1,0 +1,760 @@
+#!/bin/bash
+
+DIR=`dirname $(readlink -f $0)`
+
+. league.dat
+. ${ADMIN_DIR}/functions
+
+# -----------------------------------------------------------------------------
+# print the email to send to the administrator when the practice is full
+# $1 == [public|admin]
+# *optional* $2 == [full|confirmed|out|beer-confirmed|beer-too-late|success]
+#
+function printBootAttendancePage () {
+  activeRosterSize=`grep -c -i "^[A-z].*~[r|s]~[s|g]~[c|u]~[a|e]$" ${ROSTER}`
+  goals=`sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~[r|s]~[g]$"`
+  skaters=`sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~[r|s]~[s]$"`
+  sps=`sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~[s]~[s|g]$"`
+  regs=`sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~[r]~[s]$"`
+  regulars="$regs regulars"
+  spares=" $sps spares"
+
+  coming=`grep -c ".*" ${IN_FILE}`
+  notComing=`grep -c ".*" ${OUT_FILE}`
+  denied=`grep -c ".*" ${FULL_FILE}`
+  noResponse=$(($activeRosterSize - (${coming:-0} + ${notComing:-0} + ${denied:-0})))
+  
+  client=$1
+  action=${2:-undefined}
+  
+  case $goals in
+    0) goalies="<font color=#ff3333>$goals goalies</font>"
+       goaliesClass="label-important"
+       ;;
+    1) if [ ${maxGoalies} -eq  2 ] ; then
+         goalies="<font color=#ff3333>$goals goalie</font>"
+         goaliesClass="label-warning"
+       else
+         goalies="$goals goalie"
+         goaliesClass="label-success"
+       fi
+       ;;
+    2) goalies="$goals goalies"
+       goaliesClass="label-success"
+       ;;
+    *) goalies="<font color=#ee3333>$goals goalies</font>"
+       ;;
+  esac
+
+  # If the roster is a quarter full, we'll go red
+  if [ $skaters -lt $(((${maxSkaters} / 2) / 2)) ] ; then
+    skatersClass="label-important"
+  # enough players to play status == orange
+  elif [ $skaters -lt $((${maxSkaters} / 2)) ] ; then
+    skatersClass="label-warning"
+  # more than half the roster status == green
+  else
+    skatersClass="label-success"
+  fi
+
+comingExpanded="in"
+notComingExpanded="out"
+
+# This function is called multiple ways.
+# If an 'email' parameter is present, this was invoked by a player
+# who was rsvp-ing.
+#
+if [ "${CGI_action}" == "success" ] ; then
+  echo "<br><h5 style=\"margin: 0px;\"><span class=\"alert alert-success\">"
+  echo "Invites have been sent !"
+  echo "</span></h5><br>"
+fi
+
+if [ "$CGI_email" != "" ] ; then
+  case ${action} in
+    confirmed)
+      echo "<br><h5 style=\"margin: 0px;\"><span class=\"alert alert-success\">"
+      if [ `isSpareGoalie $CGI_email` -eq 0 ] ; then
+        echo "Thank you $firstName !  We really appreciate you helping us out !"
+      else
+        echo "$firstName, you're confirmed !"
+      fi
+      echo "</span></h5><br>"
+      if [ `isSpareSkater $CGI_email` -eq 0 ] ; then
+        echo "<h5 style=\"margin: 0px;\"><span class=\"alert alert-info\">Please remember to bring \$${spareFee}"
+        echo "</span></h5><br>"
+      fi
+      ;;
+    beer-too-late)
+      echo "<br><h5 style=\"margin: 0px;\"><span class=\"alert alert-error\">"
+      beerGuy=$(awk '{print $1}' ${BEER_FILE})
+      origIFS=$IFS
+      IFS='~' read -r e fn ln t pos active beer < <(grep $(awk '{print $1}' ${BEER_FILE}) ${ROSTER})
+      IFS=$origIFS
+      echo "$firstName, unfortunately <span style=\"color:black\">${fn} ${ln}</span> is already bringing beer:</span></h5><br>"
+      ;;
+    beer-confirmed)
+      echo "<br><h5 style=\"margin: 0px;\"><span class=\"alert alert-success\">"
+      echo "$firstName, you're confirmed for Beer Duty !"
+      echo "</span></h5><br>"
+      ;;
+    full)
+      echo "<br><h5 style=\"margin: 0px;\"><span class=\"alert alert-error\">"
+      echo "Sorry $firstName, unfortunately the roster is full for this week:</span></h5>"
+      ;;
+  esac
+  
+fi
+
+# If there is a 'plist' parameter it was invoked by an administrator who was
+# setting some people's attendance to 'out'.  We'll check to see if any of the
+# players were goalies and report
+if [ "${CGI_plist}" != "" ] ; then
+
+  # the admin moved players to "not coming" so we'll open that section on
+  #the attendance page
+  comingExpanded="out"
+  notComingExpanded="in"
+
+  if [ "${manageGoalies}" == "true" ] ; then
+    goalieOut=0
+    for p in ${CGI_plist//;/ } ; do
+      if [ `isRegularGoalie $p` -eq 0 ] ; then
+        goalieOut=1
+        break;
+      fi
+    done
+    if [ $goalieOut -eq 1 ] ; then
+      echo "<h4 style=\"color: red;\">Emails were sent the spares goalies</h4>"
+    fi
+  fi
+
+fi
+
+opponentStr=""
+if [[ ${scoreTracker} == "yes" ]] && [[ ${OPPONENT} != "" ]] ; then
+  opponentStr+=" vs ${OPPONENT}"
+fi
+cat << EOE
+  <h4>$(date -d"${GAME_DAY}" +"%a %b %d")  ($GAME_START - ${GAME_END}) @ ${GAME_LOCATION} ${opponentStr}</h4>
+EOE
+if [ "${GAME_ACTIVE}" == "c" ] ; then
+  printf "<br><h4><span class=\"alert alert-error\"><i>CANCELLED</i></span></h4>\n"
+fi
+cat <<EOE
+<!-- Attendance Summary -->
+<table>
+  <thead>
+  <tr><th style="padding:5px 10px 0px 0px;">Goalies</th>
+      <th style="padding:5px 0px 0px 10px;">Skaters</th></tr>
+  </thead>
+  <tbody>
+  <tr>
+     <td style="text-align: center;padding:5px 10px 0px 0px;"><span class="label $goaliesClass" style="font-size: 14px; line-height:20px;">&nbsp;&nbsp;$goals&nbsp;&nbsp;</span></td>
+     <td style="text-align: center;padding:5px 0px 0px 10px;"><span class="label $skatersClass" style="font-size: 14px; line-height:20px;">&nbsp;&nbsp;$skaters&nbsp;&nbsp;</span></td>
+  </tr>
+  </tbody>
+</table>
+<br>
+<!-- /Attendance Summary -->
+EOE
+
+# ----------------------------------------------------------------------------
+# PEOPLE WHO ARE COMING
+
+
+if [ $((goals + skaters)) -lt 1 ] ; then
+  sectionHeight="min-Height: 20px;"
+elif [ $((goals + skaters)) -lt 5 ] ; then
+  comingSectionHeight="min-Height: 100px;"
+fi
+
+if [ $((goals + skaters)) -eq 0 ] || [ $client != "admin" ] ; then
+  comingSelectorEnabled="disabled"
+fi
+
+cat << EEE1
+<div class="accordion" id="attendance">
+
+  <!-- C O M I N G  -->
+  <div class="accordion-group">
+   <div class="accordion-heading">
+     <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#attendance" href="#comingSection"><b>Coming ($coming):</b></a>
+   </div>
+   <div id="comingSection" class="accordion-body collapse ${comingExpanded}">
+     <div class="accordion-inner" style="${comingSectionHeight}">
+     
+EEE1
+
+if [ "$comingSelectorEnabled" != "disabled" ] ; then
+cat<<EEE2
+       <div class="form-actions" style="margin:0px; padding:0px;">
+         <div class="btn-group">
+           <button $comingSelectorEnabled id="comingGroupSelector" class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="comingGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></span></input></button>
+           <ul class="dropdown-menu">
+             <li><a onclick="toggleGroup2(true, 'comingGroup','coming')"><small>all</small></a></li>
+             <li><a onclick="toggleGroup2(false,'comingGroup','coming')"><small>none</small></a></li>
+           </ul>
+         </div>
+
+          <div class="btn-group">
+            <button onclick="rsvp('coming','out');" id="comingIn" name="comingGroupMenu" class="btn btn-small btn-danger" style="border-radius: 0px;display: none;"><span class="icon-remove">&nbsp;Out</span></button>           
+          </div>
+          <div class="btn-group">
+            <button onclick="sendMail('coming');" id="comingEmail" name="comingGroupMenu" class="btn btn-small btn-default" style="border-radius: 0px;display: none;"><span class="icon-envelope">&nbsp;Email</span></button>
+          </div>
+       </div> <!-- / class="form-actions" -->
+EEE2
+fi
+
+if [ "$client" == "admin" ] ; then
+  printf "<table id=\"coming\" class=\"table table-hover table-condensed\" cellpadding=\"2\" cellspacing=\"0\" border=\"0\">\n"
+else
+  printf "<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n"
+fi
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of people who have said they are coming
+if [ "${beerTracker}" == "yes" ] ; then
+  #echo "$(date) \${beerTracker} ${beerTracker}  ${BEER_FILE}" >> /tmp/attendance.log
+  # if there is a beer volunteer, grab their email address
+  if [ -s ${BEER_FILE} ] ; then
+    IFS=$' \t\n'
+    beerVolunteer=$(awk '{print $1}' ${BEER_FILE})
+    #touch /tmp/attendance.log; chmod 777 /tmp/attendance.log
+    #echo "beerVolunteer $beerVolunteer" >> /tmp/attendance.log
+  fi
+fi
+
+if [ $((goals + skaters)) -gt 0 ] ; then
+  IFS=$' \t\n'
+  for player in `sort -u -t"~" -k5 -k4 -k1 ${IN_FILE} | awk -F"~" '{printf "%s\n",$2}'` ; do
+    outLink="${whosComingUrl}?action=out&amp;email=$player"
+    #echo "${beerTracker} ${beerVolunteer} == $player" >> /tmp/attendance.log
+    printf "<tr id=\"${player}\">\n"
+    printf "<td width=\"10\">\n"
+    if [[ "$client" == "admin" ]] ; then
+      printf "<input type=\"checkbox\" id=\"cb_$player\"  name=\"coming\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\"></td>"
+    else
+      printf "</td>"
+    fi
+    if [[ "${CGI_email}" == "${player}" ]] ; then
+      printf "<td><label for=\"cb_$player\"><b style=\"color:green;\"> %s</b>" "`getFullName $player`"
+    else
+      printf "<td><label for=\"cb_$player\"> %s" "`getFullName $player`"
+    fi
+    if [ `isSpare $player` -eq 1 ] ; then
+      printf "<i class="muted"> (spare)</i>"
+    fi
+    if [ `isGoalie $player` -eq 0 ] ; then
+      printf "<i class="muted"> (goalie)</i>"
+    fi
+    if [[ "${beerTracker}" == "yes" && "${beerVolunteer}" == "$player" ]] ; then
+      printf "&nbsp;&nbsp;<span class=\"label label-warning\">Beer Duty</span>"
+    fi
+    printf "</label></td>"
+    printf "</tr>"
+  done
+else
+  printf "<tr rowspan=\"2\"><i class=\"muted\">nobody yet</i></tr>"
+fi
+
+cat << EOW
+
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="comingSection" -->
+</div> <!-- /class="accordion-group" -->
+EOW
+
+# ----------------------------------------------------------------------------
+# PEOPLE WHO ARE _NOT_ COMING
+
+if [ ${notComing:-0} -gt 0 -a ${notComing:-0} -lt 5 -a "$client" == "admin" ] ; then
+  notComingSectionHeight="min-Height: 100px;"
+fi
+
+cat << EEE1
+  <div class="accordion-group">
+    <div class="accordion-heading">
+      <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#attendance" href="#notComingSection"><b>Not Coming ($notComing):</b></a>
+    </div>
+    <div id="notComingSection" class="accordion-body collapse ${notComingExpanded}">
+      <div class="accordion-inner" style="${notComingSectionHeight}">
+EEE1
+
+if [ ${notComing:-0} -gt 0 -a "${client}" == "admin" ] ; then
+cat<<EEE2
+        <div class="form-actions" style="margin:0px; padding:0px;">
+          <div class="btn-group">
+            <button $noComingSelectorEnabled id="notComingGroupSelector" class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="notComingGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></span></button>
+            <ul class="dropdown-menu">
+              <li><a onclick="toggleGroup2(true,'notComingIn','notComing')"><small>all</small></a></li>
+              <li><a onclick="toggleGroup2(false,'notComingIn','notComing')"><small>none</small></a></li>
+            </ul>
+          </div> <!-- /class="btn-group" -->
+
+          <div class="btn-group">
+            <button onclick="rsvp('notComing','coming');" id="notComingIn" name="notComingGroupMenu" class="btn btn-small btn-success" style="border-radius: 0px;display: none;"><span class="icon-ok">&nbsp;In</span></button>
+          </div> <!-- / class="btn-'notComing'group" -->
+        </div> <!-- / class="form-actions" -->
+EEE2
+fi
+
+if [ "$client" == "admin" ] ; then
+  printf "<table id=\"notComing\" class=\"table table-hover table-condensed\">"
+else
+  printf "<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n"
+fi
+printf "<tbody>\n"
+if [ $notComing -gt 0 ] ; then
+  IFS=$' \t\n'
+  for player in `sort -u -t"~" -k5 -k4 -k1 ${OUT_FILE} | awk -F"~" '{printf "%s\n",$2}'` ; do
+    inLink="${whosComingUrl}?action=in&amp;email=$player"
+    printf "<tr id=\"$player\">\n"
+    printf "<td width=\"10\">\n"
+    if [ "$client" == "admin" ] ; then
+      printf "<input type=\"checkbox\" id=\"cb_$player\"  name=\"notComing\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\"></td>"
+    else
+      printf "</td>"
+    fi
+    printf "<td><label for=\"cb_$player\"> %s" "`getFullName $player`" 
+    if [ `isSpare $player` -eq 1 ] ; then
+      printf "<i class="muted"> (spare)</i>"
+    fi
+    if [ `isGoalie $player` -eq 0 ] ; then
+      printf "<i class="muted"> (goalie)</i>"
+   fi
+    printf "</label></td>"
+    printf "</tr>"
+  done
+else
+  printf "<tr rowspan=\"2\"><i class=\"muted\">nobody yet</i></tr>"
+fi
+cat << EOY
+</tbody>
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="notComingSection" -->
+</div> <!-- /class="accordion-group" -->
+EOY
+
+# ----------------------------------------------------------------------------
+# PEOPLE WHO WERE _DENIED_ BECAUSE THE ROSTER WAS FULL
+
+if [ -s ${FULL_FILE} ] ; then
+
+  if [ "$client" != "admin" ] ; then
+    deniedSelectorEnabled="disabled"
+    deniedSectionHeight="min-Height: 40px;"
+  else
+    deniedSectionHeight="min-Height: 100px;"
+  fi
+
+cat << EEE1
+  <div class="accordion-group">
+    <div class="accordion-heading">
+      <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#attendance" href="#deniedSection"><b>Denied ($denied):</b></a>
+    </div>
+    <div id="deniedSection" class="accordion-body collapse ">
+      <div class="accordion-inner" style="${deniedSectionHeight}">
+EEE1
+
+  if [ "$deniedSelectorEnabled" != "disabled" ] ; then
+cat<<EEE2
+        <div class="form-actions" style="margin:0px; padding:0px;">
+          <div class="btn-group">
+            <button $deniedSelectorEnabled id="deniedGroupSelector" class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="notComingGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></span></button>
+            <ul class="dropdown-menu">
+              <li><a onclick="toggleGroup2(true,'deniedIn','denied')"><small>all</small></a></li>
+              <li><a onclick="toggleGroup2(false,'deniedIn','denied')"><small>none</small></a></li>
+            </ul>
+          </div> <!-- /class="btn-group" -->
+
+          <div class="btn-group">
+            <button onclick="rsvp('denied','request');" id="deniedIn" name="deniedGroupMenu" class="btn btn-small btn-success" style="border-radius: 0px;display: none;"><span class="icon-ok">&nbsp;In</span></button>
+          </div> <!-- / class="btn-'denied'group" -->
+        </div> <!-- / class="form-actions" -->
+EEE2
+  fi
+
+  if [ "$client" == "admin" ] ; then
+    printf "<table id=\"denied\" class=\"table table-hover table-condensed\">"
+  else
+    printf "<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n"
+  fi
+  printf "<tbody>\n"
+
+  if [ $denied -gt 0 ] ; then
+    for player in `awk -F"~" '{printf "%s\n",$2}' ${FULL_FILE}` ; do
+      printf "<tr id=\"$player\">\n"
+      printf "<td width=\"10\">\n"
+      if [ "$client" == "admin" ] ; then
+        printf "<input type=\"checkbox\" id=\"cb_$player\"  name=\"denied\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\"></td>"
+      else
+        printf "</td>"
+      fi
+      printf "<td><label for=\"cb_$player\"> %s" "`getFullName $player`" 
+      if [ `isSpare $player` -eq 1 ] ; then
+        printf "<i class="muted"> (spare)</i>"
+      fi
+      if [ `isGoalie $player` -eq 0 ] ; then
+        printf "<i class="muted"> (goalie)</i>"
+     fi
+      printf "</label></td>"
+      printf "</tr>"
+    done
+  else
+    printf "<tr rowspan=\"2\"><i class=\"muted\">nobody yet</i></tr>"
+  fi
+cat << EOY
+</tbody>
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="deniedSection" -->
+</div> <!-- /class="accordion-group" -->
+EOY
+
+fi
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of people who have not yet responded
+
+if [ ${noResponse:-0} -gt 0 -a ${noResponse:-0} -lt 5 -a "$client" == "admin" ] ; then
+  noResponseSectionHeight="min-Height: 100px;"
+fi
+
+cat << EOB1
+  <div class="accordion-group">
+    <div class="accordion-heading">
+      <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#attendance" href="#noResponseSection"><b>No Response ($noResponse):</b></a>
+    </div>
+    <div id="noResponseSection" class="accordion-body collapse out">
+      <div class="accordion-inner" style="${noResponseSectionHeight}">
+EOB1
+
+if [  ${noResponse:-0} -gt 0 -a "$client" == "admin" ] ; then
+cat<<EOB2
+        <div class="form-actions" style="margin:0px; padding:0px;">
+
+          <div class="btn-group">
+            <button  id="noResponseGroupSelector" class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="noResponseGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></span></button>
+            <ul class="dropdown-menu">
+              <li><a onclick="toggleGroup2(true,'noResponseGroup','noResponse')"><small>all</small></a></li>
+              <li><a onclick="selectListByClass('noResponse','ss','noResponseGroup')">spare skaters</a></li>
+              <li><a onclick="selectListByClass('noResponse','sg','noResponseGroup')">spare goalies</a></li>
+              <li><a onclick="toggleGroup2(false,'noResponseGroup','noResponse')"><small>none</small></a></li>
+            </ul>
+          </div> <!-- /class="btn-group" -->
+
+
+
+         <div class="btn-group">
+           <button id="noResponseMenu" name="noResponseGroupMenu" class="btn btn-primary dropdown-toggle" style="border-radius: 0px;display:none" data-toggle="dropdown"><i class="icon-user icon-white">&nbsp;</i> Actions <span class="icon-caret-down"></span></button>
+           <ul class="dropdown-menu">
+             <li id="coming"><a onclick="rsvp('noResponse', 'coming')"><i class="icon-ok text-success"></i> <span class="text-success">in</span></a></li>
+             <li id="out"><a href="bulkRoster-rsi.html" onclick="rsvp('noResponse','out')"><i class="icon-remove text-error"></i> <span class="text-error">out</span></a></li>
+             <li id="resendInvite"><a onclick="sendInvite('noResponse');"><i class="icon-repeat text-info"></i> <span class="text-info">Resend Invites</span></a></li>
+             <li class="divider"></li>
+             <li id="groupMail"><a onclick="sendMail('noResponse');"><i class="icon-envelope"></i> <span class="">Group Mail</span></a></li>
+           </ul>
+         </div> <!-- / class="btn-group" -->
+
+
+          <div class="btn-group">
+            <button onclick="rsvp('noResponse','coming');" id="noResponseIn" name="noResponseGroupMenu" class="btn btn-small btn-success" style="border-radius: 0px;display:none"><span class="icon-ok">&nbsp;In</span></button>
+          </div> <!-- / class="btn-group" -->
+          <div class="btn-group">
+            <button onclick="rsvp('noResponse','out');" id="noResponseOut" name="noResponseGroupMenu" class="btn btn-small btn-danger" style="border-radius: 0px;display:none"><span class="icon-remove">&nbsp;Out</span></button>
+          </div>
+          <div class="btn-group">
+            <button onclick="sendInvite('noResponse');" id="noResponseEmail" name="noResponseGroupMenu" class="btn btn-small btn-default" style="border-radius: 0px;display: none;"><span class="icon-envelope">&nbsp;Send Invite</span></button>
+          </div>
+
+        </div> <!-- / class="form-actions" -->
+EOB2
+fi
+
+if [ "$client" == "admin" ] ; then
+  printf "<table id=\"noResponse\" class=\"table table-hover table-condensed\">"
+else
+  printf "<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n"
+fi
+printf "<tbody>\n"
+
+if [ ${noResponse:-0} -gt 0 ] ; then
+  IFS=$' \t\n'
+  for player in `grep -i "~[r|s]~[s|g]~[c|u]~[a|e]$" ${ROSTER} | sort -u -t"~" -k1 |sort -t"~" -k5 -k4 -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'` ; do
+    grep -q $player ${IN_FILE} ${OUT_FILE} ${FULL_FILE};
+    if [ $? -ge 1 ] ; then
+      playerPos=`getPlayerPosition $player`
+      playerType=`getPlayerType $player`
+      printf "<tr id=\"$player\">\n"
+      printf "<td width=\"10\">"
+      if [ "$client" == "admin" ] ; then
+        printf "<input type=\"checkbox\" class=\"${playerType}${playerPos}\" id=\"cb_$player\"  name=\"noResponse\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\"></td>"
+      else
+        printf "</td>"
+      fi
+      printf "<td><label for=\"cb_$player\"> %s" "`getFullName $player`" 
+      if [ `isSpare $player` -eq 1 ] ; then
+        printf "<i class="muted"> (spare)</i>"
+      fi
+      if [ `isGoalie $player` -eq 0 ] ; then
+        printf "<i class=\"muted\"> (goalie)</i>"
+      fi
+      printf "</label></td>"
+      printf "</tr>"
+    fi
+  done
+else
+  printf "<tr rowspan=\"2\"><i class=\"muted\">nobody left</i></tr>"
+fi
+cat << EOW
+</tbody>
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="sparesSection" -->
+</div> <!-- /class="accordion-group" -->
+</div> <!-- /class="accordion" -->
+
+<script type="text/javascript">
+
+function sendMail(tid)
+{
+  var selected = \$("table#" + tid).find("tr input[type='checkbox']:checked");
+  //\$(selected).each(function(e){});
+  var playerList = [];
+  selected.each(
+    function(i,e){
+      playerList.push(\$(e).parent().parent().attr('id'));
+    }
+  );
+
+  //alert(playerList.join(";"));
+
+  /* \$.ajax({
+     async: true,
+     type: "POST",
+     url: "groupMail.html",
+     data: { plist: playerList.join(";") }
+     });
+  */
+
+  //request.complete(function(msg){
+  window.location.assign('groupMail.html?plist=' + playerList.join(";"));
+  //window.location.assign('groupMail.html?action=success');
+  //});     
+}
+
+function sendInvite(tid)
+{
+  var selected = \$("table#" + tid).find("tr input[type='checkbox']:checked");
+  //\$(selected).each(function(e){});
+  var playerList = [];
+  selected.each(
+    function(i,e){
+      playerList.push(\$(e).parent().parent().attr('id'));
+    }
+  );
+
+  //alert(playerList.join(";"));
+
+  //var request = \$.ajax({
+  \$.ajax({
+     async: true,
+     type: "POST",
+     url: "invite.html",
+     data: { plist: playerList.join(";") }
+     });
+
+  //request.complete(function(msg){
+  //  window.location.assign('invite.html?plist=' + playerList.join(";"));
+  //alert('Invites sent !');
+  window.location.assign('whoscoming-divs.html?action=success');
+  //});     
+}
+
+function rsvp(tid, answer)
+{
+  var selected = \$("table#" + tid).find("tr input[type='checkbox']:checked");
+  //\$(selected).each(function(e){});
+  var playerList = [];
+  selected.each(
+    function(i,e){
+      playerList.push(\$(e).parent().parent().attr('id'));
+    }
+  );
+
+  //alert(answer + ' plist:' +playerList.join(";"));
+
+  var request = \$.ajax({
+     type: "POST",
+     url: "rsvp.cgi",
+     data: { action: answer, plist: playerList.join(";") }
+     });
+
+  request.complete(function(msg){
+    if ( answer == 'out' ) {
+      // pass the list of players being marked as out.  If one of them is a goalie
+      // we'll be able to report extra information to the administrator
+      window.location.assign('whoscoming-divs.html?plist=' + playerList.join(";"));
+    }
+    else{
+      window.location.assign('whoscoming-divs.html');
+    }
+  });     
+}
+
+
+function unhideMenu(group)
+{
+  //val = document.getElementById('goalieGroup').checked ? true : false;
+  //document.getElementById('goalieMenu').disabled = !val;
+  val = document.getElementById(group).checked ? "inline" : "none";
+  document.getElementByName(group + 'Menu').style.display = val;
+}
+
+function toggleGroup(group,rowName)
+{
+  val = document.getElementById(group).checked ? true : false;
+  trclass = document.getElementById(group).checked ? "row-selected" : ""
+  elements = document.getElementsByName(rowName)
+  for(e=0; e < elements.length; e++) {
+    elements[e].checked=val;
+    highlightRow(elements[e], group);
+  }
+  // TODO: Unhide/enable menu
+  document.getElementById('edit').style.display = document.getElementById(group).checked ? "none" : "inline";
+  unhideMenu(group);
+}
+
+function toggleGroup2(all,group,rowName)
+{
+  val = all
+  if(all){
+    document.getElementById(group).checked = true;
+  }
+  else{
+    document.getElementById(group).checked = false;
+  }
+  trclass = document.getElementById(group).checked ? "row-selected" : ""
+  elements = document.getElementsByName(rowName)
+  for(e=0; e < elements.length; e++) {
+    elements[e].checked=val;
+    highlightRow(elements[e], group);
+  }
+
+  //unhideMenu(group);
+  enableMenu(rowName);
+}
+
+function highlightRow(e, group)
+{
+  trclass = document.getElementById(group).checked ? "row-selected" : ""
+  var tr = e.parentNode.parentNode;
+  tr.className = trclass;
+}
+
+function enableMenu(eName)
+{
+  elements = document.getElementsByName(eName)
+  var rowsSelected=0;
+
+  var regulars=0;
+  for(e=0;e<elements.length;e++) {
+    rowsSelected += elements[e].checked ? 1 : 0;
+    if (elements[e].checked  &&
+        (elements[e].className == 'rs' ||
+         elements[e].className == 'rg' ||
+         elements[e].className == 'sg')) {
+      ++regulars;
+    }
+  }
+
+  if(document.getElementById(eName + 'Menu')){
+    document.getElementById(eName + 'Menu').style.display = rowsSelected > 0 ? "inline" : "none";
+  }
+
+  if(document.getElementById(eName + 'Out')){
+    document.getElementById(eName + 'Out').style.display = rowsSelected > 0 ? "inline" : "none";
+  }
+
+  if(document.getElementById(eName + 'In')){
+    document.getElementById(eName + 'In').style.display = rowsSelected > 0 ? "inline" : "none";
+  }
+
+  if(regulars == 0) {
+    if(document.getElementById(eName + 'Email')){
+      document.getElementById(eName + 'Email').style.display = rowsSelected > 0 ? "inline" : "none";
+    }
+  }
+  else{
+    document.getElementById(eName + 'Email').style.display = "none";
+  }
+
+}
+
+function selectRow(e)
+{
+  trclass = e.checked ? "row-selected" : ""
+  var tr = e.parentNode.parentNode;
+  tr.className = trclass;
+  //unhideMenu(group);
+  enableMenu(e.getAttribute('name'));
+}
+
+function selectListByClass(tid,c,group) {
+
+   // Clear any selected checkboxes
+  \$("table#" + tid + " :checkbox").each(
+  function(i,e){
+    \$(e).prop('checked', false);
+    \$(e).parent().parent().removeClass('row-selected');
+  });
+
+  // Filter rows with the specified class 's'
+  var items = \$('table#' + tid + ' .' + c);
+
+  items.each(
+    function(i,e){
+      \$(e).prop('checked', true);
+      //alert(\$(e).parent().parent().className);
+      \$(e).parent().parent().toggleClass('row-selected');
+      }
+  );
+
+  // Unhide the menu if is should be
+  if(items.length > 0){
+    document.getElementById(group).checked = true;
+    //unhideMenu(group);
+    enableMenu(tid);
+  }
+}
+
+function modifyPlayer(operation, player) {
+  var url="http://xdal.org/benchboss/${LEAGUE_DIR}/admin/playerMenuHandler.cgi";
+  var data;
+  switch(operation){
+    case 'mts':
+       data = 'action=mt&player=me@here.com';
+       break;
+    case 'mtr':
+       data = 'action=mtr&player=me@here.com';
+       break;
+    case 'mti':
+       data = 'action=mti&player=me@here.com';
+       break;
+    case 'rm':
+       break;
+  }
+  $.get(url, data );
+}
+
+
+
+</script>
+
+EOW
+
+}

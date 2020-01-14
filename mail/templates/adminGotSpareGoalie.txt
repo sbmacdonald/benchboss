@@ -1,0 +1,7 @@
+Hi ORGANIZER/REGULAR_GOALIE,
+
+Spare keeper -SPARE_GOALIE- *can* play on DATE !
+
+
+Current Goalie Status:
+

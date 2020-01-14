@@ -1,0 +1,18 @@
+# ----------------------------------------------------------------------------
+# Check if the current value of a config parameter ($1) has been changed
+#  $1  the string of the config key
+#  $2  the possibly new value for the key
+#  $3  pass-by-ref updated to current value
+#
+# Returns 0 if the config value has not changed
+# Returns 1 iff the value of $2 is different from the current value of $1
+function getConfigValue () {
+  value=`grep $1 $LEAGUE_CFG | awk -F= '{print $2}'`
+  if [ "$2" != "${value//\"/}" ] ; then
+    eval "$3=$value"
+    eval "$4=\"$2\"";
+    return 1
+  else
+    return 0
+  fi
+}

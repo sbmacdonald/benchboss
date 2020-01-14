@@ -1,0 +1,50 @@
+#!/bin/bash
+. functions
+
+#-----------------------------------------------------------
+function coming() {
+  # ";" separated list of email addresses
+  for p in ${CGI_plist//;/ } ; do
+    # check type of player, if regular call im_in, if spare, call im_request
+    if [ `isSpare $p` -eq 1 ] ; then
+      result=`im_request $p`
+    else
+      result=`im_in $p`
+    fi
+    logInfo "admin_coming($REMOTE_USER): $p:${GAME_ID}  $result" >> ${attendanceLogFile}
+    logInfo "admin_coming($REMOTE_USER): $p:${GAME_ID}  $result" >> ${LOG_FILE}
+  done
+}
+
+#-----------------------------------------------------------
+function notComing() {
+  # ";" separated list of email addresses
+  for p in ${CGI_plist//;/ } ; do
+    result=`im_out $p`
+    logInfo "admin_out($REMOTE_USER): $p:${GAME_ID}  $result" >> ${attendanceLogFile}
+    logInfo "admin_out($REMOTE_USER): $p:${GAME_ID}  $result" >> ${LOG_FILE}
+  done
+}
+
+#-----------------------------------------------------------
+function request() {
+
+  # the im_request function requires that the $CGI_gid variable is present in
+  # the url, however, we are simulating to we'll just set it locally
+  local CGI_gid=`getGameID`
+
+  # ";" separated list of email addresses
+  for p in ${CGI_plist//;/ } ; do
+    result=`im_request $p`
+    logInfo "admin_request($REMOTE_USER): $p:${GAME_ID}  $result" >> ${attendanceLogFile}
+    logInfo "admin_request($REMOTE_USER): $p:${GAME_ID}  $result" >> ${LOG_FILE}
+  done
+}
+
+#-----------------------------------------------------------
+#function recinded() {
+  # ";" separated list of email addresses
+  #for p in ${CGI_plist//;/ } ; do
+  #  sed -i "s/\($p~.*~.*~\)\(.~\)\(.*\)/\1r~\3/" 
+  #done
+#}

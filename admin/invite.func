@@ -1,0 +1,82 @@
+#!/bin/bash
+
+DIR=`dirname $(readlink -f $0)`
+
+. league.dat
+
+# ----------------------------------------------------------------------------
+# Send the Invitation emails via Gmail smtp API
+# This function builds an html and text version of the email based on a
+# template.
+#
+function resendInvitationEmails () {
+
+  spotsTaken=`grep -c -i "~[r|s]~s$" ${IN_FILE}`
+
+  #IFS='~' read -r gameId gameTimestamp gameDay gameStart location endTime active < <(grep "$1" ${SCHEDULE})
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b %_d")
+  spots=$(($maxSkaters-$spotsTaken))
+  #gameID=$1
+
+  if [ $spots -gt 0 ] ; then
+    subject="${LeagueType} ${gameDate} (${GAME_START} - ${GAME_END})"
+
+    keeper=`sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~r~g$"`
+    skaters=`sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~[r|s]~[s]$"`
+
+    # we use idx as a counter to help us throttle our email requests
+    # in an attempt to avoid being denied service
+    EMAIL_BATCH_SIZE=5
+    EMAIL_BATCH_SEPARATOR=10
+    idx=0
+    for email in `sed 's/;/\\n/g' <<< ${CGI_plist}` ; do
+      htmlEmail="${MAIL_DIR}/${email}-invite.html"
+      txtEmail="${MAIL_DIR}/${email}-invite.txt"
+
+      if [ $spots -eq 0 ] ; then 
+        cp ${MAIL_TEMPLATE_DIR}/rosterFull.html ${htmlEmail}
+        cp ${MAIL_TEMPLATE_DIR}/rosterFull.txt ${txtEmail}
+      else
+        cp ${MAIL_TEMPLATE_DIR}/invite.html ${htmlEmail}
+        cp ${MAIL_TEMPLATE_DIR}/invite.txt ${txtEmail}
+      fi
+
+      playerName=`getFirstName "$email"`
+
+      sed -i -e "s|PLAYER_NAME|${playerName}|g" \
+             -e "s|PLAYER_EMAIL|${email}|g" \
+             -e "s|GAME_ID|${GAME_ID}|g" \
+             -e "s|URL_BASE|${leagueUrl}|g" \
+             -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+             -e "s|SPOTS|${spots}|g" \
+             -e "s|GAME_DAY|${gameDate}|g" \
+             -e "s~GAME_TIME~${GAME_START/ [A|P]M/} - ${GAME_END}~g" \
+             -e "s|GAME_LOCATION|${GAME_LOCATION}|g" \
+             ${htmlEmail}
+      sed -i -e "s|PLAYER_NAME|${playerName}|g" \
+             -e "s|PLAYER_EMAIL|${email}|g" \
+             -e "s|GAME_ID|${GAME_ID}|g" \
+             -e "s|URL_BASE|${leagueUrl}|g" \
+             -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+             -e "s|SPOTS|${spots}|g" \
+             -e "s|GAME_DAY|${gameDate}|g" \
+             -e "s~GAME_TIME~${GAME_START/ [A|P]M/} - ${GAME_END}~g" \
+             -e "s|GAME_LOCATION|${GAME_LOCATION}|g" \
+             ${txtEmail}
+      sendmailViaGmail ${email} "${subject}" ${htmlEmail} ${txtEmail} &
+
+      # Throttle email sending to avoid blocking by Gmail servers
+      if [ $((++idx % ${EMAIL_BATCH_SIZE})) -eq 0 ] ; then
+       sleep ${EMAIL_BATCH_SEPARATOR}
+      fi
+    done
+    
+  fi
+
+cat <<EOF
+Status: 302 redirect
+Location: whoscoming-divs.html
+
+EOF
+ exit
+}

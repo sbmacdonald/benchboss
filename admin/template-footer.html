@@ -1,0 +1,228 @@
+
+
+
+    </div><!--/.fluid-container-->
+ <footer>
+   <p>&nbsp;&nbsp;&copy; Benchboss 2013</p>
+ </footer>
+
+    <!-- Le javascript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script type="text/javascript" src="http://platform.twitter.com/widgets.js"></script>
+    <script src="../../Common/bootstrap/js/jquery.js"></script>
+    <script src="../../Common/bootstrap/datepicker/js/bootstrap-datepicker.js"></script> 
+    <script src="../../Common/bootstrap/js/bootstrap-transition.js"></script> 
+<!--<script src="../../Common/bootstrap/js/bootstrap-alert.js"></script>      -->
+<script src="../../Common/bootstrap/js/bootstrap-modal.js"></script>     
+    <script src="../../Common/bootstrap/js/bootstrap-dropdown.js"></script>
+<!--<script src="../../Common/bootstrap/js/bootstrap-scrollspy.js"></script>  -->
+    <script src="../../Common/bootstrap/js/bootstrap-tab.js"></script>
+    <script src="../../Common/bootstrap/js/bootstrap-tooltip.js"></script>
+<!--    <script src="../../Common/bootstrap/js/bootstrap-popover.js"></script> -->
+    <script src="../../Common/bootstrap/js/bootstrap-button.js"></script>
+     <script src="../../Common/bootstrap/js/bootstrap-collapse.js"></script>  
+<!--<script src="../../Common/bootstrap/js/bootstrap-carousel.js"></script>   -->
+<!--<script src="../../Common/bootstrap/js/bootstrap-typeahead.js"></script>  -->
+    <script src="../../Common/bootstrap/js/bootstrap-affix.js"></script>
+
+<!-- jquery.mobile 
+    <script src="../../Common/jquery.mobile/js/jquery-1.7.1.min.js"></script>
+    <script src="../../Common/jquery.mobile/js/jquery.mobile-1.2.0.js"></script>
+-->
+
+<!--    <script type="text/javascript" src="../../Common/bootstrap-datetimepicker-master/js/bootstrap-datetimepicker.js"></script> -->
+    <script type="text/javascript" src="../../Common/stephen-datetimepicker/js/bootstrap-datetimepicker.js"></script>
+
+    <script type="text/javascript">
+    /*
+    $(document).ready(function(){
+        $('a').click(function(event){
+              event.preventDefault();
+              window.location.assign($(this).attr('href'));
+         });
+    });
+    */
+    /*
+    $(document).ready(function(){
+        $('a').each(function(idx,e){
+             if($(e).attr("onClick") == undefined){
+               //alert(e);
+               event.preventDefault();
+               window.location.assign($(this).attr('href'));             
+             }
+         });
+    });
+    */
+
+    $(document).ready(function(){
+        $('a').each(function(idx,e){
+             if($(e).attr("onClick") == undefined){
+               $(e).click(function(event){
+                     event.preventDefault();
+                     window.location.assign($(this).attr('href'));
+               });
+             }
+         });
+    });
+    
+      $(function() {
+        $('#regularTimePicker').datetimepicker({
+            pickDate: false,
+            pick12HourFormat: true,
+            minuteIncrement: 30,
+            secondIncrement: 5,
+            displaySeconds: false
+        });
+      });
+      $(function() {
+        $('#reminderTimePicker').datetimepicker({
+            pickDate: false,
+            pick12HourFormat: true,
+            minuteIncrement: 30,
+            secondIncrement: 5,
+            displaySeconds: false
+        });
+      });
+      $(function() {
+        $('#spareTimePicker').datetimepicker({
+            pickDate: false,
+            pick12HourFormat: true,
+            minuteIncrement: 30,
+            secondIncrement: 5,
+            displaySeconds: false
+        });
+      });
+      $(function() {
+        $('#spareReminderTimePicker').datetimepicker({
+            pickDate: false,
+            pick12HourFormat: true,
+            minuteIncrement: 30,
+            secondIncrement: 5,
+            displaySeconds: false
+        });
+      });
+    </script>
+
+    <script type="text/javascript">
+      $(function() {
+        $('#startTimePicker').datetimepicker({
+            pickDate: false,
+            pick12HourFormat: true,
+            minuteIncrement: 30,
+            secondIncrement: 5,
+            displaySeconds: false
+        });
+      });
+      $(function() {
+        $('#endTimePicker').datetimepicker({
+            pickDate: false,
+            pick12HourFormat: true,
+            minuteIncrement: 30,
+            secondIncrement: 5,
+            displaySeconds: false
+        });
+      });
+    </script>
+<script type="text/javascript">
+$(function () {
+  $("[rel='tooltip']").tooltip();
+});
+
+//$(function(){
+//$("#regularsGroup").click(function() {
+//
+//});
+//});
+
+</script>
+
+<script>
+$(function(){
+
+   var nowTemp = new Date();
+   var now = new Date(nowTemp.getFullYear(), nowTemp.getMonth(), nowTemp.getDate(), 0, 0, 0, 0);
+   
+   var start = $('#dpd1').datepicker({
+     onRender: function(date) {
+       return date.valueOf() < now.valueOf() ? 'disabled' : '';
+     }
+   }).on('changeDate', function(ev) {
+     //alert(ev.date.getDay());
+     if (ev.date.valueOf() > end.date.valueOf()) {
+       var newDate = new Date(ev.date)
+       newDate.setDate(newDate.getDate());
+       end.setValue(newDate);
+     }
+     start.hide();
+   }).data('datepicker');
+   var end = $('#dpd2').datepicker({
+     onRender: function(date) {
+      return ((date.valueOf() < start.date.valueOf()) || (date.getDay() !=
+               start.date.getDay())) ? 'disabled' : '';
+    }
+  }).on('changeDate', function(ev) {
+    var weeks = Math.round((end.date.valueOf() - start.date.valueOf())/604800000) + 1;
+    $("#addOrUpdate").html('Add ' + weeks + ' Games' );
+    end.hide();
+  }).data('datepicker');
+  });
+</script>
+
+<!-- Script for updating "day(s) before game" -->
+<script>
+$(function(){
+  $("#regularsDay").change(function() {
+    var day = $('#regularsDay').val();
+    if(day == 1) {
+      $('#regularsDaysBefore').html('day before the game');
+    }
+    else{
+      $('#regularsDaysBefore').html('days before the game');
+    }
+  });
+  $("#regularsReminderDay").change(function() {
+    var day = $('#regularsReminderDay').val();
+    if(day == 1) {
+      $('#regularsReminderDaysBefore').html('day before the game');
+    }
+    else{
+      $('#regularsReminderDaysBefore').html('days before the game');
+    }
+  });
+  $("#sparesDay").change(function() {
+    var day = $('#sparesDay').val();
+    if(day == 0) {
+      $('#sparesDaysBefore').html('game day');
+    }
+    else if(day == 1) {
+      $('#sparesDaysBefore').html('day before the game');
+    }
+    else{
+      $('#sparesDaysBefore').html('days before the game');
+    }
+  });
+  $("#spareReminderDay").change(function() {
+    var day = $('#sparesReminderDay').val();
+    if(day == 1) {
+      $('#sparesReminderDaysBefore').html('day before the game');
+    }
+    else{
+      $('#sparesReminderDaysBefore').html('days before the game');
+    }
+  });
+  $("#goalieNoResponseEmailDay").change(function() {
+    var day = $('#goalieNoResponseEmailDay').val();
+    if(day == 1) {
+      $('#goalieNoResponseEmailDaysBefore').html('day before the game');
+    }
+    else{
+      $('#goalieNoResponseEmailDaysBefore').html('days before the game');
+    }
+  });
+  
+});
+</script>
+
+  </body>
+</html>

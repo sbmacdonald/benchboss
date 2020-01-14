@@ -1,0 +1,46 @@
+#!/bin/bash
+#
+# $Id: send-invite,v 1.2 2006/11/29 16:22:41 scottm Exp $
+#
+
+DIR=`dirname $(readlink -f $0)`
+. league.dat
+
+# $1 == regulars|reminders|sapres
+# $2 == gameId
+
+#IFS='~' read -r gameId gameTimestamp gameDay gameStart location endTime active < <(grep "$2" schedule)
+IFS='~' read -r GAME_ID GAME_TIMESTAMP GAME_DAY GAME_START GAME_LOCATION GAME_END GAME_ACTIVE OPPONENT PF PA < <(grep "$2" ${SCHEDULE})
+
+echo "send-invite: \$1:$1 \$2:$2 GAME_ID: $GAME_ID $GAME_DAY $GAME_START $GAME_LOCATION $GAME_END $GAME_ACTIVE $OPPONENT" >> /tmp/${LEAGUE_DIR}-send-invite.log
+
+. ${DIR}/admin/functions $DIR
+. ${DIR}/data/league.cfg
+
+# Only send the emails is they are enabled !
+rsvpLogFile="${MAIL_DIR}/rsvp.log"
+if [ "${emailStatus}" == "enabled" ] ; then
+
+  case $1 in
+    regulars)
+      sendConfirmationEmails ${GAME_ID}
+      ;;
+    reminders)
+      sendReminderEmails ${GAME_ID}
+      ;;
+    spares)
+      sendInvitationEmails ${GAME_ID}
+      ;;
+    spareReminder)
+      sendInvitationReminderEmails ${GAME_ID}
+      ;;
+    noGame)
+      sendNoGameEmails ${GAME_ID}
+      ;;
+  esac
+
+  logInfo "$1 emails sent" >> $rsvpLogFile
+  
+else
+  logInfo "$1 emails not sent, emailStatus == ${emailStatus}" >> $rsvpLogFile
+fi

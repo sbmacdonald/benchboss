@@ -1,0 +1,9 @@
+Hi ORGANIZER,
+
+Your regular keeper -KEEPER_NAME- said he can't make it this week (DATE).
+
+*Send email to spare keepers*<URL_BASE/sendGoalidRequest.html?token=ADMIN_TOKEN&reg=REGULAR_GOALIE_EMAIL>
+
+
+Current Goalie Status:
+

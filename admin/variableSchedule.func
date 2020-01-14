@@ -1,0 +1,536 @@
+#!/bin/bash
+. functions
+
+
+# -----------------------------------------------------------------------------
+# $CGI_glist == ";" separated list of games to be deleted
+#
+function deleteGames() {
+  # ";" separated list of gameIds
+  for g in ${CGI_glist//;/ } ; do
+    #grab the entry from the schedule so we can log it
+    gameRecord=`grep "^$g~.*" ${SCHEDULE}`
+    sed -i "/^$g~.*/d" ${SCHEDULE}
+    logInfo "Delete($REMOTE_USER): $gameRecord" >> $scheduleLogFile
+  done
+}
+
+
+# -----------------------------------------------------------------------------
+# $CGI_glist == ";" separated list of games to be cancelled
+#
+function cancelGames() {
+  # ";" separated list of gameIds
+  for g in ${CGI_glist//;/ } ; do
+    #grab the entry from the schedule so we can log it
+    gameRecord=`grep "^${g}~(.*\)" ${SCHEDULE}`
+    sed -i "s|^${g}~\(.*\)~u~\(.*\)|${g}~\1~c~\2|" $SCHEDULE
+    logInfo "Cancel($REMOTE_USER): $gameRecord" >> $scheduleLogFile
+  done
+}
+
+
+# -----------------------------------------------------------------------------
+# $CGI_glist == ";" separated list of games to be reinstated
+#
+function reinstateGames() {
+  # ";" separated list of gameIds
+  for g in ${CGI_glist//;/ } ; do
+    #grab the entry from the schedule so we can log it
+    gameRecord=`grep "^$g~.*" ${SCHEDULE}`
+    sed -i "s|^${g}~\(.*\)~c~\(.*\)|${g}~\1~\2|" $SCHEDULE
+    logInfo "Reinstate($REMOTE_USER): $gameRecord" >> $scheduleLogFile
+  done
+}
+
+
+# -----------------------------------------------------------------------------
+# $CGI_glist == ";" separated list of games to be updated.
+#
+# NOTE: only the the START TIME | END TIME | Location may be "bulk" upldated
+#
+# Schedule entries:
+#                             ^${g}~\(.*\)    ~\(.*\)   ~\(.*\) ~\(.*\) ~\(.*\)~.
+#  6083e2afc5379d1c6bd90fbe528b7865~1384318800~11/6/2013~8:30 PM~Civic~10:00 PM~c~opponent~5~2
+#                    ▲                   ▲         ▲      ▲        ▲     ▲      ▲    ▲     ▲ ▲
+#  GAME_ID        ---┘                   |         |      |        |     |      |    |     | |
+#  GAME_TIMESTAMP -----------------------┘         |      |        |     |      |    |     | |
+#  GAME_DAY       - - - - - - - - - - - - - - - - -┘      |        |     |      |    |     | |
+#  GAME_START     ----------------------------------------┘        |     |      |    |     | |
+#  GAME_LOCATION  - - - - - - - - - - - - - - - - - - - - - - - -  ┘     |      |    |     | |
+#  GAME_END       ------------------------------------------------------ ┘      |    |     | |
+#  GAME_STATUS    - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ┘    |     | |
+#  GAME_OPP       -------------------------------------------------------------------┘     | |
+#  GAME_PF        - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -┘ |
+#  GAME_PA        ---------------------------------------------------------------------------┘
+#
+function reinstateGames() {
+  # ";" separated list of gameIds
+  for g in ${CGI_glist//;/ } ; do
+    #grab the entry from the schedule so we can log it
+    gameRecord=`grep "^$g~.*" ${SCHEDULE}`
+    sed -i "s|^${g}~\(.*\)~c~\(.*\)|${g}~\1~u~\2|" $SCHEDULE
+    logInfo "Reinstate($REMOTE_USER): $gameRecord" >> $scheduleLogFile
+  done
+}
+
+# -----------------------------------------------------------------------------
+# Print the guts of the variable schedule page
+function printVariableSchedulePage () {
+  tempRosterFile=${SCHEDULE}.tmp
+  
+  today=`date -d'today 0:00' +%s`
+  pastCount=`awk -F~ -vtoday=$today '{if($2 < today && $7 != "c"){print $1}}' ${SCHEDULE} | wc -l`
+  upcomingCount=`awk -F~ -vtoday=$today '{if($2 >= today && $7 != "c"){print $1}}' ${SCHEDULE} | wc -l`
+  urlParams="addGame.cgi?action=add"
+  pastGamesStr="(${pastCount})"
+  if [ "${scoreTracker}" == "yes" ] ; then
+    pastGamesStr=""
+    ORIG_IFS=$IFS
+    IFS="~"
+    while read gameId gameTimestamp gameDay gameStart location endTime active opponent PF PA; do
+      if [[ ${active} != "c" ]] && [ ! -z ${PF} ] &&  [ ! -z ${PA} ] ; then 
+        if [ ${PF:=0} -gt ${PA:=0} ] ; then
+          wins=$(($wins + 1))
+        elif [ ${PF:=1} -eq ${PA:=2} ] ; then
+          ties=$(($ties + 1))
+        else
+          losses=$(($losses +1))
+        fi
+      fi
+    done < ${SCHEDULE}
+    IFS=$ORIG_IFS
+    winsStr="<span style=\"color:green;font-weight:bold\">${wins}W</span>"
+    lossesStr="<span style=\"color:red;font-weight:bold\">${losses}L</span>"
+    tiesStr="<span style=\"color:gray;font-weight:bold\">${ties}T</span>"
+    recordStr="(${winsStr} - ${lossesStr}"
+    if [ ${ties} -gt 0 ] ; then
+      recordStr+=" - ${tiesStr}"
+    fi
+    recordStr+=")"
+  fi
+printf "<h3>Schedule</h3>"
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# P A S T   G A M E S
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+if [ ${upcomingCount:-0} -gt 0 -a $upcomingCount -lt 5 ]  ; then
+  upcomingSectionHeight="min-Height:260px"
+fi
+  upcomingSectionHeight="min-Height:260px"
+
+cat << EEE
+
+<div class="accordion" id="schedule">
+  <div class="accordion-group">
+   <div class="accordion-heading">
+     <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#schedule" href="#pastSection"><b>Past Games:  ${recordStr} ${pastGamesStr}</b></a>
+   </div>
+   <div id="pastSection" class="accordion-body collapse out">
+     <div class="accordion-inner" style="${pastSectionHeight}">
+        <div class="form-actions" style="margin:0px; padding:0px;">
+          <div class="btn-group">
+            <button class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="pastGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></button>
+            <ul class="dropdown-menu">
+              <li><a onclick="toggleGroup2(true,'pastGroup','past')">all</a></li>
+              <li><a onclick="toggleGroup2(false,'pastGroup','past')">none</a></li>
+            </ul>
+          </div> <!-- / class="btn-group" -->
+
+          <div class="btn-group">
+            <button id="pastGroupMenu" class="btn btn-primary dropdown-toggle" style="border-radius: 0px; display: none;" data-toggle="dropdown"><i class="icon-calendar icon-white">&nbsp;</i> Actions <span class="icon-caret-down"></span></button>
+            <ul class="dropdown-menu">
+              <li id="pastAttendance"><a href="#" onclick="attendance('pastList')"><i class="icon-group text-info"></i> <span class="text-info">attendance</span></a></li>
+EEE
+if [[ ${scoreTracker} == "yes" ]] ; then
+cat<<EEE
+              <li id="pastScore" style="display:inline;"><a href="#" onclick="enterScore('pastList')"><i class="icon-laptop text-success"></i> <span class="text-success">enter score</span></a></li>
+EEE
+fi
+
+cat <<EEE
+            </ul>
+          </div> <!-- / class="btn-group" -->
+        </div> <!-- / class="form-actions" -->
+<table class="table table-hover table-condensed" id="pastList" cellpadding="2" cellspacing="0" border="0">
+
+<tbody>
+EEE
+
+if [ ${pastCount:-0} -gt 0 ] ; then
+  ORIG_IFS=$IFS
+  IFS="~"
+  while read gameId gameTimestamp gameDay gameStart location endTime active opponent PF PA; do
+    if [ ${gameTimestamp} -lt ${today} ] ; then
+      gameLink="whoscoming-divs.html?gameId=${gameId}"
+      printf "<tr id=\"${gameId}\">\n"
+      printf "<td width=\"10\">\n"
+      if  [[ ${active} == p || ${active} == u ]] ; then
+        outcome=""
+        if [ "${scoreTracker}" == "yes" ] ; then
+          if [ ${PF:-0} -gt ${PA:-0} ] ; then
+            outcome+="<span style=\"font-weight: bold;color:green\">&nbsp;&nbsp;W (${PF}-${PA})</span>"
+          elif [ ${PF:-1} -eq ${PA:-2} ] ; then
+            outcome+="<span style=\"font-weight: bold;color:black\">&nbsp;&nbsp;T (${PF}-${PA})</span>"
+          elif [ ${PF:-0} -lt ${PA:-0} ] ; then
+            outcome+="<span style=\"font-weight: bold;color:red\">&nbsp;&nbsp;L (${PF}-${PA})</span>"
+          else
+            outcome+=""
+          fi
+        fi
+          printf "<input type=\"checkbox\" id=\"cb_${gameId}\" name=\"past\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\">"
+        printf "</td><td><label for=\"cb_${gameId}\"> %s - %s  @ %s ${opponent:+vs $opponent} ${outcome}\n" `date -d"$gameDay $gameStart" +"%a %b %d &nbsp;&nbsp;&nbsp;%l:%M %p"` `date -d"$endTime" +"%l:%M %p"` "$location" 
+      else
+        printf "</td><td colspan=6><label for=\"cb_${gameId}\"><i> %s - NO GAME -</i> " `date -d"$gameDay" +"%a %b %d&nbsp;&nbsp;&nbsp;"`
+      fi
+      printf "</label></td>\n"
+       printf "</tr>"
+    fi
+  done < ${SCHEDULE}
+  IFS=$ORIG_IFS
+else
+  printf "<tr rowspan=\"2\"><td>none</td></tr>\n"
+fi
+
+cat << EOW
+</tbody>
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="pastSection" -->
+</div> <!-- /class="accordion-group" -->
+
+EOW
+
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# U P C O M I N G   G A M E S
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+if [ ${upcomingCount:-0} -eq 0 ] ; then
+  upcomingSelectorEnabled="disabled" 
+fi
+
+cat << EOE
+<!-- UPCOMING GAMES -->
+  <div class="accordion-group">
+    <div class="accordion-heading">
+      <a class="accordion-toggle" style="text-decoration:none;"  data-toggle="collapse" data-parent="#schedule" href="#upcomingSection"><b>Upcoming Games (${upcomingCount}):</b></a>
+    </div>
+    <div id="upcomingSection" class="accordion-body collapse in">
+      <div class="accordion-inner"  style="${upcomingSectionHeight}">
+        <div class="form-actions" style="margin:0px; padding:0px;">
+          <div class="btn-group">
+            <button $upcomingSelectorEnabled class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="futureGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></button>
+            <ul class="dropdown-menu">
+              <li><a onclick="toggleGroup2(true,'futureGroup','future')">all</a></li>
+              <li><a onclick="toggleGroup2(false,'futureGroup','future')">none</a></li>
+            </ul>
+          </div> <!-- / class="btn-group" -->
+
+          <div class="btn-group">
+            <button id="futureGroupMenu" class="btn btn-primary dropdown-toggle" style="border-radius: 0px; display: none;" data-toggle="dropdown"><i class="icon-calendar icon-white">&nbsp;</i> Actions <span class="icon-caret-down"></span></button>
+            <ul class="dropdown-menu">
+EOE
+
+if [[ ${scoreTracker} == "yes" ]] ; then
+  cat<<EOF
+              <li id="score"><a href="#" onclick="enterScore('futureList')"><i class="icon-laptop text-success"></i> <span class="text-success">enter score</span></a></li>
+
+EOF
+fi
+
+cat <<EOE
+              <li id="edit"><a href="#" onclick="editGame('futureList')"><i class="icon-edit text-info"></i> <span class="text-info">edit game</span></a></li>
+              <li id="cancel" style="display:inline;"><a href="variableSchedule.html" onclick="moveTo('futureList','c')"><i class="icon-ban-circle text-warning"></i> <span class="text-warning">cancel game</span></a></li>
+              <li id="reinstate"><a href="variableSchedule.html" onclick="moveTo('futureList','a')"><i class="icon-ok-circle text-success"></i> <span class="text-success">reinstate game</span></a></li>
+              <li class="divider"></li>
+              <li id="remove"><a href="variableSchedule.html" onclick="moveTo('futureList','d')"><i class="icon-trash text-error"></i> <span class="text-error">remove</span></a></li>
+            </ul>
+          </div> <!-- / class="btn-group" -->
+          <div class="btn-group">
+            <button onclick="window.location.replace('addGame.html?action=add')" id="futureGroupAdd" class="btn btn-primary" style="border-radius: 0px;"><span class="icon-calendar"></span>&nbsp;<span class="icon-plus"></span></button>
+          </div>
+        </div> <!-- / class="form-actions" -->
+
+<table class="table table-hover table-condensed" id="futureList" cellpadding="2" cellspacing="0" border="0">
+<tbody>
+
+<!-- GAMES HERE -->
+
+EOE
+
+if [ ${upcomingCount:-0} -gt 0 ] ; then
+  ORIG_IFS=$IFS
+  IFS="~"
+  while read gameId gameTimestamp gameDay gameStart location endTime active opponent PF PA; do
+    if [ ${gameTimestamp} -ge ${today} ] ; then
+      printf "<tr id=\"${gameId}\">\n"
+      printf "<td width=\"10\">\n"
+      if [[ ${active} == u ]] ; then
+        outcome=""
+        if [ "${scoreTracker}" == "yes" ] && [ ! -z ${PF} ] &&  [ ! -z ${PA} ] ; then
+          if [ ${PF:=0} -gt ${PA:=0} ] ; then
+            outcome+="<span style=\"font-weight: bold;color:green\">&nbsp;&nbsp;W (${PF}-${PA})</span>"
+          elif [ ${PF:=1} -eq ${PA:=2} ] ; then
+            outcome+="<span style=\"font-weight: bold;color:black\">&nbsp;&nbsp;T (${PF}-${PA})</span>"
+          else
+            outcome+="<span style=\"font-weight: bold;color:red\">&nbsp;&nbsp;L (${PF}-${PA})</span>"
+          fi
+        fi
+        printf "<input type=\"checkbox\" id=\"cb_${gameId}\" name=\"future\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\">"
+        printf "</td><td><label for=\"cb_${gameId}\"> %s - %s @ %s %s %s" `date -d"$gameDay $gameStart" +"%a %b %d &nbsp;&nbsp;&nbsp;%l:%M %p"` `date -d"$endTime" +"%l:%M %p"` "$location"  "${opponent:+vs $opponent}" "${outcome}"
+      else
+        printf "<input data-cancelled type=\"checkbox\" id=\"cb_${gameId}\" name=\"future\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\">"
+        printf "<td><label for=\"cb_${gameId}\"><i> %s - NO GAME -</i> " `date -d"$gameDay" +"%a %b %d&nbsp;&nbsp;&nbsp;"`
+      fi
+      printf "</label></td>\n"
+      printf "</tr>"
+    fi
+  done < ${SCHEDULE}
+  IFS=$ORIG_IFS
+else
+  printf "<tr rowspan=\"2\"><td>none</td></tr>\n"
+fi
+
+cat << EOW
+</tbody>
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="upcomingSection" -->
+</div> <!-- /class="accordion-group" -->
+
+</div> <!-- /class="accordion" -->
+
+<div id="confirmDialogue" class="modal hide fade" style="display: none; ">
+  <div class="modal-body">
+    <div id="removeMessage">Really delete players ?</div>
+  </div>
+  <div class="modal-footer">
+    <a href="#" class="btn btn-danger btn-small" data-dismiss="modal">Cancel</a>
+    <a href="variableSchedule.html" class="btn btn-small btn-success" onclick="post()">OK</a>
+  </div>
+</div>
+                    
+<script type="text/javascript">
+
+var g_rosterAction = "";
+var g_rosterTable = "";
+var g_deletePlayers = 0;
+
+function post(){
+  g_deletePlayers = 1;
+  alert(g_deletePlayers + ' ' + g_rosterAction + ' ' + g_rosterTable);
+  \$("#confirmDialogue").modal("hide");
+}
+
+function confirm(table, x){
+
+  g_rosterAction = x;
+  g_rosterTable = table;
+
+  \$("#confirmDialogue").modal("show");
+  //if (g_deletePlayers == 1) {
+  //  moveTo(table, x);
+  //}
+}
+
+function moveTo(table, x){
+  var selected = \$("table#" + table).find("tr input[type='checkbox']:checked");
+  //\$(selected).each(function(e){});
+  var gameList = [];
+  selected.each(
+    function(i,e){
+      gameList.push(\$(e).parent().parent().attr('id'));
+    }
+  );
+
+  //alert(gameList.join(";"));
+
+  var request = \$.ajax({
+     type: "POST",
+     url: "variableSchedule.cgi",
+     async: false,
+     data: { action: "mt" + x , glist: gameList.join(";") }
+     });
+     
+   request.done(function( msg ) {
+       //alert( "Players Moved");
+       //window.location.href = "variableSchedule.cgi";
+       //var loc = \$(this).attr('href');
+   });
+   
+   request.complete(function( msg ) {
+       //alert( "Players Moved");
+       //window.location.href = "variableSchedule.cgi";
+       //var loc = \$(this).attr('href');
+       window.location.assign(\$(this).attr('href'));             
+   });
+  
+}
+
+
+function attendance(table)
+{
+  var game = \$("table#" + table).find("tr input[type='checkbox']:checked");
+  var hrefval = \$(this).attr('href'); 
+  var link='whoscoming-divs.html?gameId=' + \$(game).parent().parent().attr('id');
+  window.location.assign(link);
+}
+
+
+function editGame(table)
+{
+  var game = \$("table#" + table).find("tr input[type='checkbox']:checked");
+  var hrefval = \$(this).attr('href');
+  var link='addGame.html?action=edt&glist=' + \$(game).parent().parent().attr('id');
+  //alert(link)
+  window.location.assign(link);
+}
+
+function enterScore(table)
+{
+  var game = \$("table#" + table).find("tr input[type='checkbox']:checked");
+  var hrefval = \$(this).attr('href');
+  var link='addGame.html?action=score&glist=' + \$(game).parent().parent().attr('id');
+  //alert(link)
+  window.location.assign(link);
+}
+
+function unhideMenu(group)
+{
+  //val = document.getElementById('goalieGroup').checked ? true : false;
+  //document.getElementById('goalieMenu').disabled = !val;
+  menuDisp = document.getElementById(group).checked ? "inline" : "none";
+  addDisp  = document.getElementById(group).checked ? "none" : "inline";
+  document.getElementById(group + 'Menu').style.display = menuDisp;
+  document.getElementById(group + 'Add').style.display = addDisp;
+}
+
+
+function toggleGroup2(all,group,rowName)
+{
+  val = all
+  if(all){
+    document.getElementById(group).checked = true;
+  }
+  else{
+    document.getElementById(group).checked = false;
+  }
+  trclass = document.getElementById(group).checked ? "row-selected" : ""
+  elements = document.getElementsByName(rowName)
+  for(e=0; e < elements.length; e++) {
+    elements[e].checked=val;
+    // Toggle hover class
+    //var tr = elements[e].parentNode.parentNode;
+    //tr.className = trclass;
+    highlightRow(elements[e], group);
+  }
+  // TODO: Unhide/enable menu
+  //document.getElementById('submenu').style.display = (document.getElementById('goalieGroup').checked) ? "inline" : "none";
+  document.getElementById('edit').style.display = document.getElementById(group).checked ? "none" : "inline";
+  document.getElementById('score').style.display = document.getElementById(group).checked ? "none" : "inline";
+  document.getElementById('pastScore').style.display = document.getElementById(group).checked ? "none" : "inline";
+  document.getElementById('pastAttendance').style.display = document.getElementById(group).checked ? "none" : "inline";
+  alert(document.getElementById('pastAttendance').style.display);
+  unhideMenu(group);
+}
+
+function highlightRow(e, group)
+{
+  trclass = document.getElementById(group).checked ? "row-selected" : ""
+  var tr = e.parentNode.parentNode;
+  tr.className = trclass;
+}
+
+function enableMenu(eName)
+{
+  elements = document.getElementsByName(eName)
+  var rowsSelected=0;
+  var active=0;
+  var cancelled=0;
+  //alert('enableMenu(' + eName + '): ' + elements.length);
+  for(e=0;e<elements.length;e++) {
+    //rowsSelected += elements[e].checked ? 1 : 0;
+    if (elements[e].checked) {
+      rowsSelected += 1;
+      if(elements[e].hasAttribute("data-cancelled")) {
+        cancelled += 1;
+      }
+      else{
+        active += 1;
+      }
+    }
+  }
+
+  //alert('enableMenu: ' + eName + ' rowsSelcted: ' + rowsSelected);
+  //document.getElementById('submenu').disabled = rowsSelected > 0 ? false : true;
+
+  if (document.getElementById(eName + 'GroupMenu') != null)
+    document.getElementById(eName + 'GroupMenu').style.display = rowsSelected > 0 ? "inline" : "none";
+
+  if (document.getElementById(eName + 'GroupAdd') != null)
+    document.getElementById(eName + 'GroupAdd').style.display = rowsSelected > 0 ? "none" : "inline";
+
+  if(document.getElementById('edit') != null)
+    document.getElementById('edit').style.display = rowsSelected > 1 ? "none" : "inline";
+
+  if(document.getElementById('pastScore') != null)
+    document.getElementById('pastScore').style.display = rowsSelected > 1 ? "none" : "inline";
+
+  if(document.getElementById('pastAttendance') != null)
+    document.getElementById('pastAttendance').style.display = rowsSelected > 1 ? "none" : "inline";
+
+  if(document.getElementById('score') != null)
+    document.getElementById('score').style.display = rowsSelected > 1 ? "none" : "inline";
+
+  if(document.getElementById('cancel') != null)
+    document.getElementById('cancel').style.display = active > 0 ? "inline" : "none";
+
+  if(document.getElementById('reinstate') != null)
+    document.getElementById('reinstate').style.display = cancelled > 0 ? "inline" : "none";
+}
+
+function selectRow(e)
+{
+  //alert(e.getAttribute('data-player-type'));
+  trclass = e.checked ? "row-selected" : ""
+  var tr = e.parentNode.parentNode;
+  tr.className = trclass;
+  //alert('e.name:' + e.getAttribute('name'));
+  enableMenu(e.getAttribute('name'));
+}
+
+function selectListByClass(tid, c, group)
+{
+  //alert("selectListByClass");
+   // Clear any selected checkboxes
+  \$("table#" + tid + " :checkbox").each(
+    function(i,e){
+      \$(e).prop('checked', false);
+      \$(e).parent().parent().removeClass('row-selected');
+   });
+
+//alert("after clearing check boxes");
+  // Filter rows with the specified class 's'
+  var items = \$("table#" + tid + " ." + c);
+//alert(items + " c: " + c);
+  //\$("table#" + tid + " ." + c).each(
+  items.each(
+    function(i,e){
+      //alert(e);
+      \$(e).prop('checked', true);
+      //alert(\$(e).parent().parent().className);
+      \$(e).parent().parent().toggleClass('row-selected');
+      }
+  );
+
+  // Unhide the menu if is should be
+  if(items.length > 0){
+    document.getElementById(group).checked = true;
+    unhideMenu(group);
+  }
+}
+
+</script>
+EOW
+}

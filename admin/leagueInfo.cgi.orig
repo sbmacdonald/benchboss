@@ -1,0 +1,511 @@
+#!/bin/bash
+#
+#
+
+. functions
+cgiVars
+. ${DATA_DIR}/league.cfg
+
+# ----------------------------------------------------------------------------
+# Check if the current value of a config parameter ($1) has been changed
+#  $1  the string of the config key
+#  $2  the possibly new value for the key
+#  $3  pass-by-ref updated to current value
+#
+# Returns 0 if the config value has not changed
+# Returns 1 iff the value of $2 is different from the current value of $1
+function getConfigValue () {
+  value=`grep $1 $LEAGUE_CFG | awk -F= '{print $2}'`
+  if [ "$2" != "${value//\"/}" ] ; then
+    eval "$3=$value"
+    eval "$4=\"$2\"";
+    return 1
+  else
+    return 0
+  fi
+}
+
+
+
+# Depending on the section being upated, assume all values have changed and
+# update them
+if [ ! -z ${CGI_section} ] ; then
+  chmod 777 $leagueLogFile
+  case "$CGI_section" in
+    info)
+      #infoKeys=(gameDay gameStart gameEnd gameLocation emailStatus spareFee maxSpots)
+      #for ((i=0; i < ${#infoKeys[@]}; i++)) ; do 
+      #  getConfigValue ${infoKeys[$i]} "`eval echo \\\$CGI_${infoKeys[$i]}`" val newVal
+      #  if [ $? -eq 1 ] ; then 
+      #    key=${infoKeys[$i]}
+      #    logInfo "Key '${key}' updated from: '$val' to: '$newVal'" 
+      #    sed -i "s|^${key}.*|${key}=\"$newVal\"|g" $LEAGUE_CFG
+      #  fi 
+      #done
+      logInfo "[$REMOTE_USER]: Updating League Info From: ${LeagueOrganizer} ${OrganizerEmail} ${EmailAccountName} ${EmailAccountAddress} ${EmailAccountPass} ${replyToOrganizer} ${gameDay} ${gameStart} ${gameEnd} ${gameLocation} ${emailStatus} ${spareFee} ${maxSpots}" >> $leagueLogFile
+      sed -i "s|^LeagueOrganizer.*|LeagueOrganizer=\"$CGI_organizer\"|g" $LEAGUE_CFG
+      sed -i "s|^OrganizerEmail.*|OrganizerEmail=\"$CGI_organizerEmail\"|g" $LEAGUE_CFG
+      sed -i "s|^EmailAccountName.*|EmailAccountName=\"$CGI_leagueEmailName\"|g" $LEAGUE_CFG
+      sed -i "s|^EmailAccountAddress.*|EmailAccountAddress=\"$CGI_leagueEmailAddress\"|g" $LEAGUE_CFG
+      sed -i "s|^EmailAccountPass.*|EmailAccountPass=\"$CGI_leagueEmailPwd\"|g" $LEAGUE_CFG
+      sed -i "s|^replyToOrganizer.*|replyToOrganizer=\"$CGI_replyToOrganizer\"|g" $LEAGUE_CFG
+      sed -i "s|^gameDay.*|gameDay=\"$CGI_gameDay\"|g" $LEAGUE_CFG
+      sed -i "s|^gameStart.*|gameStart=\"$CGI_gameStart\"|g" $LEAGUE_CFG
+      sed -i "s|^gameEnd.*|gameEnd=\"$CGI_gameEnd\"|g" $LEAGUE_CFG
+      sed -i "s|^gameLocation.*|gameLocation=\"$CGI_gameLocation\"|g" $LEAGUE_CFG
+      sed -i "s|^emailStatus.*|emailStatus=\"$CGI_emailStatus\"|g" $LEAGUE_CFG
+      sed -i "s|^spareFee.*|spareFee=$CGI_spareFee|g" $LEAGUE_CFG
+      sed -i "s|^maxSpots.*|maxSpots=$CGI_maxSpots|g" $LEAGUE_CFG
+      logInfo "[$REMOTE_USER]: Updated League Info To: $CGI_organizer $CGI_organizerEmail $CGI_leagueEmailName $CGI_leagueEmailAddress $CGI_leagueEmailPwd $CGI_replyToOrganizer $CGI_gameDay $CGI_gameStart $CGI_gameEnd $CGI_gameLocation $CGI_emailStatus $CGI_spareFee $CGI_maxSpots $CGI_maxSpots" >> $leagueLogFile
+    ;;
+    regularsConfirm)
+      . $LEAGUE_CFG
+      logInfo "[$REMOTE_USER]: Updating Regulars emails:" >> $leagueLogFile
+      sed -i "s|^regularsEmailDay.*|regularsEmailDay=\"$CGI_regularsDay\"|g" $LEAGUE_CFG
+      sed -i "s|^regularsEmailTime.*|regularsEmailTime=\"$CGI_regularsTime\"|g" $LEAGUE_CFG
+      newEntry=`date "+0 %k * * %a" -d "${CGI_regularsDay} ${CGI_regularsTime} - 1 hour"`
+      newEntry+=" \$${LEAGUE_ACRO}_DIR/send-invite regulars"
+      printf "From: ${EmailAccountAddress}\nSubject: Regulars Confirm Crontab change\nPlease change the regulars cron to: $newEntry\n\n" | /usr/lib/sendmail scottmac13@gmail.com
+      sed "s|.*${LEAGUE_ACRO}.*regularsConfirm.*|${newEntry} \$${LEAGUE_ACRO}_DIR/send-invite regulars|" /tmp/crontab.prev > /tmp/crontab.www-data
+      #cp /tmp/crontab.www-data /tmp/crontab.prev 
+      chmod 777 /tmp/crontab.www-data
+    ;;
+
+    regularsReminder)
+      . $LEAGUE_CFG
+      logInfo "[$REMOTE_USER]: Updating Regulars Reminder emails:" >> $leagueLogFile
+      sed -i "s|^regularsReminderFlag.*|regularsReminderFlag=\"$CGI_regularsReminder\"|g" $LEAGUE_CFG
+      sed -i "s|^regularsReminderEmailDay.*|regularsReminderEmailDay=\"$CGI_regularsReminderDay\"|g" $LEAGUE_CFG
+      sed -i "s|^regularsReminderEmailTime.*|regularsReminderEmailTime=\"$CGI_regularsReminderTime\"|g" $LEAGUE_CFG
+      newEntry=`date "+0 %k * * %a" -d "${CGI_regularsReminderDay} ${CGI_regularsReminderTime} - 1 hour"`
+      newEntry+=" \$${LEAGUE_ACRO}_DIR/send-invite reminders"
+      printf "From: ${EmailAccountAddress}\nSubject: Regulars Reminder Crontab change\nPlease change the regulars reminder cron to: $newEntry\n\n" | /usr/lib/sendmail scottmac13@gmail.com
+      sed "s|.*${LEAGUE_ACRO}.*regularsReminder.*|${newEntry} \$${LEAGUE_ACRO}_DIR/send-reminder regulars|" /tmp/crontab.prev > /tmp/crontab.www-data
+      #cp /tmp/crontab.www-data /tmp/crontab.prev 
+      chmod 777 /tmp/crontab.www-data
+    ;;
+
+    spares)
+      . $LEAGUE_CFG
+      logInfo "[$REMOTE_USER]: Updating Spares emails:" >> $leagueLogFile
+      sed -i "s|^sparesEmailDay.*|sparesEmailDay=\"$CGI_sparesDay\"|g" $LEAGUE_CFG
+      sed -i "s|^sparesEmailTime.*|sparesEmailTime=\"$CGI_sparesTime\"|g" $LEAGUE_CFG
+      newEntry=`date "+0 %k * * %a" -d "${CGI_sparesDay} ${CGI_sparesTime} - 1 hour"`
+      newEntry+=" \$${LEAGUE_ACRO}_DIR/send-invite spares"
+      printf "From: ${EmailAccountAddress}\nSubject: Spares Crontab change\nPlease change the spares cron to: $newEntry \n\n" | /usr/lib/sendmail scottmac13@gmail.com
+      sed "s|.*${LEAGUE_ACRO}.*spares.*|${newEntry} \$${LEAGUE_ACRO}_DIR/send-invite spares|" /tmp/crontab.prev > /tmp/crontab.www-data
+      #cp /tmp/crontab.www-data /tmp/crontab.prev
+      chmod 777 /tmp/crontab.www-data
+    ;;
+    goalieCantCome)
+      . $LEAGUE_CFG
+      logInfo "[$REMOTE_USER]: Updating Goalie Management from: goalieNotify=${goalieNotify} manageGoalies=${manageGoalies}" >> $leagueLogFile
+      sed -i "s|^goalieNotify.*|goalieNotify=\"$CGI_goalieNotify\"|g" $LEAGUE_CFG
+      sed -i "s|^manageGoalies.*|manageGoalies=\"$CGI_manageGoalies\"|g" $LEAGUE_CFG
+      logInfo "[$REMOTE_USER]: Updating Goalie Management To: goalieNotify=$CGI_goalieNotify manageGoalies=$CGI_manageGoalies" >> $leagueLogFile
+    ;;
+    goalieNoResponse)
+      . $LEAGUE_CFG
+      logInfo "[$REMOTE_USER]: Updating Goalie Management from: goalieNoResponseNotify=${goalieNoResponseNotify} " >> $leagueLogFile
+      sed -i "s|^goalieNoResponseNotify.*|goalieNoResponseNotify=\"$CGI_goalieNoResponseNotify\"|g" $LEAGUE_CFG
+      logInfo "[$REMOTE_USER]: Updating Goalie Management To: goalieNoResponseNotify=$CGI_goalieNoResponseNotify " >> $leagueLogFile
+      sed -i "s|^goalieNoResponseEmailDay=.*|goalieNoResponseEmailDay=\"$CGI_goalieNoResponseEmailDay\"|g" $LEAGUE_CFG
+      sed -i "s|^goalieNoResponseEmailTime=.*|goalieNoResponseEmailTime=\"$CGI_goalieNoResponseEmailTime\"|g" $LEAGUE_CFG
+      newEntry=`date "+0 %k * * %a" -d "${CGI_goalieNoResponseEmailDay} ${CGI_goalieNoResponseTime} - 1 hour"`
+      newEntry+=" \$${LEAGUE_ACRO}_DIR/sendGoalieNoResponse"
+      printf "From: ${EmailAccountAddress}\nSubject: Goalie No Response Crontab change\nPlease change the spares cron to: $newEntry \n\n" | /usr/lib/sendmail scottmac13@gmail.com
+      sed "s|.*${LEAGUE_ACRO}.*goalieNoRessponse.*|${newEntry} \$${LEAGUE_ACRO}_DIR/send-goalieNoResponse |" /tmp/crontab.prev > /tmp/crontab.www-data
+      #cp /tmp/crontab.www-data /tmp/crontab.prev
+      chmod 777 /tmp/crontab.www-data
+    ;;
+  esac
+fi
+
+# Pick up the new values
+. $LEAGUE_CFG
+
+# Compute the value for reply-to League Organizer
+replyToOrganizerTitle="Any replies to rsvp/invite emails will be sent to the the League Organizer"
+replyToOrganizerSelection="<input title=\"$replyToOrganizerTitle\" type=\"checkBox\" name=\"replyToOrganizer\" "
+if [ "${replyToOrganizer}" == "true" ] ; then
+  replyToOrganizerSelection+="value=\"true\" checked=\"checked\"/> "
+else
+  replyToOrganizerSelection+="value=\"true\"/> "
+fi
+replyToOrganizerSelection+="League Organizer <span style=\"font-size: 0.75em;\">(${OrganizerEmail})</span>"
+
+# Compute the Game Selection Drop down values
+gameDaySelection=""
+for day in Sun Mon Tue Wed Thu Fri Sat ; do
+  if [ "${gameDay}" == "$day" ] ; then
+    gameDaySelection+="<option value=\"$day\" selected>$day</option>"
+  else
+    gameDaySelection+="<option value=\"$day\">$day</option>"
+  fi
+done
+
+# Compute emailStatus radio buttons
+emailStatusSelection=""
+if [ "${emailStatus}" == "enabled" ] ; then
+  emailStatusSelection+="<input type=\"radio\" name=\"emailStatus\" value=\"enabled\" checked=\"checked\"/> Enabled"
+  emailStatusSelection+="<input type=\"radio\" name=\"emailStatus\" value=\"disabled\" /> Disabled"
+else
+  emailStatusSelection+="<input type=\"radio\" name=\"emailStatus\" value=\"enabled\"/> Enabled"
+  emailStatusSelection+="<input type=\"radio\" name=\"emailStatus\" value=\"disabled\"  checked=\"checked\"/> Disabled"
+fi
+
+# Compute the Regulars Email Day Selection 
+regularsEmailSelection=""
+for day in Sun Mon Tue Wed Thu Fri Sat ; do
+  if [ "${regularsEmailDay}" == "$day" ] ; then
+    regularsEmailSelection+="<option value=\"$day\" selected>$day</option>"
+  else
+    regularsEmailSelection+="<option value=\"$day\">$day</option>"
+  fi
+done
+
+# Compute Regulars Reminder Email checkbox
+regularReminderSelection="<input type=\"checkBox\" name=\"regularsReminder\" "
+if [ "${regularsReminderFlag}" == "true" ] ; then
+  regularReminderSelection+="value=\"true\" checked=\"checked\"/> "
+else
+  regularReminderSelection+="value=\"true\"/> "
+fi
+#regularReminderSelection+="Send reminder email every:"
+
+# Compute the Regulars Reminder Email Day Selection 
+regularsEmailTitle="Day & Time when the first confirmation emails are send to all regulars"
+regularsReminderEmailTitle="Send a second (reminder) confirmation email to "
+regularsReminderEmailTitle+="regulars who have not yet responded.  Typically "
+regularsReminderEmailTitle+="this should be *before* the spares emails are sent."
+regularsReminderEmailSelection=""
+for day in Sun Mon Tue Wed Thu Fri Sat ; do
+  if [ "${regularsReminderEmailDay}" == "$day" ] ; then
+    regularsReminderEmailSelection+="<option value=\"$day\" selected>$day</option>"
+  else
+    regularsReminderEmailSelection+="<option value=\"$day\">$day</option>"
+  fi
+done
+
+# Compute the Spares Email Day Selection 
+sparesEmailTitle="Day & time when the invitation emails are sent to all spares"
+sparesEmailSelection=""
+for day in Sun Mon Tue Wed Thu Fri Sat ; do
+  if [ "${sparesEmailDay}" == "$day" ] ; then
+    sparesEmailSelection+="<option value=\"$day\" selected>$day</option>"
+  else
+    sparesEmailSelection+="<option value=\"$day\">$day</option>"
+  fi
+done
+
+# Compute goalieNotify checkbox
+goalieNotifySelection="<input type=\"checkBox\" name=\"goalieNotify\" "
+if [ "${goalieNotify}" == "true" ] ; then
+  goalieNotifySelection+="value=\"true\" checked=\"checked\"/> "
+else
+  goalieNotifySelection+="value=\"true\"/> "
+fi
+goalieNotifySelection+="Send me an email notification"
+
+# Compute manageGoalies checkbox
+manageGoaliesTitle="Invitation emails will be send to the list of spare goalies "
+manageGoaliesTitle+="as soon as a regular reports that they can not make it. &#013;&#013;"
+manageGoaliesTitle+="If this option is disabled, the email notification will "
+manageGoaliesTitle+="contain a link that will allow you to send the email to "
+manageGoaliesTitle+="the spare goalies."
+manageGoaliesSelection="<input title=\"$manageGoaliesTitle\" type=\"checkbox\" name=\"manageGoalies\" "
+if [ "${manageGoalies}" == "true" ] ; then
+  manageGoaliesSelection+="value=\"true\" checked=\"checked\"/> "
+else
+  manageGoaliesSelection+="value=\"true\"/> "
+fi
+manageGoaliesSelection+="Automatically send invites to spare goalies"
+
+# Compute the Goalie No Reponse Email Day Selection 
+goalieNoResponseEmailSelection=""
+for day in Sun Mon Tue Wed Thu Fri Sat ; do
+  if [ "${goalieNoResponseEmailDay}" == "$day" ] ; then
+    goalieNoResponseEmailSelection+="<option value=\"$day\" selected>$day</option>"
+  else
+    goalieNoResponseEmailSelection+="<option value=\"$day\">$day</option>"
+  fi
+done
+
+# Compute goalieNotify checkbox
+goalieNoResponseNotifySelection="<input type=\"checkBox\" name=\"goalieNoResponseNotify\" "
+if [ "${goalieNoResponseNotify}" == "true" ] ; then
+  goalieNoResponseNotifySelection+="value=\"true\" checked=\"checked\"/> "
+else
+  goalieNoResponseNotifySelection+="value=\"true\"/> "
+fi
+goalieNoResponseNotifySelection+="Send me an email notification"
+
+# Start building the web page that will be displayed
+htmlHeader
+
+cat << EOF
+<!DOCTYPE html>
+<html>
+<head>
+  <title>League Info</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <script type="text/javascript" src="libs/jquery-1.4.4.min.js"></script>
+</head>
+<body>
+<script src="libs/jquery.clockpick.1.2.9.js"></script>
+<link rel="stylesheet" href="libs/jquery.clockpick.1.2.9.css" type="text/css">
+<link rel="stylesheet" href="${LEAGUE_CSS}" type="text/css">
+<script type="text/javascript">
+\$(document).ready(function() {
+
+\$("#gameStart").clockpick({
+layout : 'horizontal',
+starthour : 6,
+endhour : 23,
+minutedivisions : 2,
+valuefield : 'gameStart'
+});
+
+\$("#gameEnd").clockpick({
+layout : 'horizontal',
+starthour : 6,
+endhour : 23,
+minutedivisions : 2,
+valuefield : 'gameEnd'
+});
+
+\$("#regularsTime").clockpick({
+layout : 'horizontal',
+starthour : 6,
+endhour : 23,
+minutedivisions : 1,
+valuefield : 'regularsTime'
+});
+
+\$("#regularsReminderTime").clockpick({
+layout : 'horizontal',
+starthour : 6,
+endhour : 23,
+minutedivisions : 1,
+valuefield : 'regularsReminderTime'
+});
+
+\$("#sparesTime").clockpick({
+layout : 'horizontal',
+starthour : 6,
+endhour : 23,
+minutedivisions : 1,
+valuefield : 'sparesTime'
+});
+
+\$("#goalieNoResponseEmailTime").clockpick({
+layout : 'horizontal',
+starthour : 6,
+endhour : 23,
+minutedivisions : 1,
+valuefield : 'goalieNoResponseEmailTime'
+});
+
+
+function cback() {
+  this.after("<div id='cbox' />");
+  \$("#cbox")
+  .text('Callback fired!')
+  .addClass('red')
+  .fadeIn(100)
+  .fadeOut(1500);
+}
+\$("select").not("#test").change(function() {
+binder();
+});
+function binder() {
+  var opts = {};
+  \$("select").not("#test").each(function() {
+  if (\$(this).attr("id") != 'event' && \$(this).attr("id") != 'layout') {
+    opts[\$(this).attr("id")] = eval(\$(this).val());
+  }
+  else {
+    opts[\$(this).attr("id")] = \$(this).val();
+  }
+});
+//console.log(opts);
+\$("#gameStart").unbind().unbind( "keydown" ).clockpick(opts);
+opts.valuefield = 'startTime';
+}
+//$("#gameStart").unbind().unbind( "keydown" ).clockpick(opts);
+//opts.valuefield = 'endTime';
+//}
+
+binder();
+});
+</script>
+<!--  CGI_gameStart: ${CGI_gameStart} . ${gameStart}<br> 
+ CGI_emailToRegulars: ${CGI_emailToRegulars} <br> 
+ CGI_emailToSpares: ${CGI_emailToSpares} <br> 
+ CGI_subject: ${CGI_subject}<br>
+ CGI_message: ${CGI_message}<br> -->
+<!-- CGI_gameEnd: ${CGI_gameEnd} . ${gameEnd} <br> -->
+<!-- CGI_gameDay: ${CGI_gameDay} . ${gameDay} <br> -->
+<!-- CGI_gameLocation: $CGI_gameLocation . $gameLocation <br> -->
+<!-- CGI_maxSpots: $CGI_maxSkaters . $maxSpots <br> -->
+<!-- CGI_emailStatus: $CGI_emailStatus . $emailStatus <br> -->
+<!-- CGI_regularsDay: ${CGI_regularsDay} . ${regularsEmailDay} <br> -->
+<table style="width:850;">
+<tr>
+<td>
+<form action="leagueInfo.cgi" method="POST">
+<fieldset style="width: 600px;">
+<legend>League Information:</legend>
+<input name="section" value="info" type="hidden">
+<table>
+
+<!-- Organizer -->
+<tr>
+<td class="input">League Organizer:</td>
+<td><input name="organizer" type="text" size="10" id="organizer" value="${LeagueOrganizer}">
+email: <input class="inputLeft" name="organizerEmail" size="35" id="organizerEmail" value="${OrganizerEmail}"></td>
+</tr>
+
+<!-- Email Info -->
+<tr>
+<td class="input">League Gmail Name:</td>
+<td><input style="float:left" name="leagueEmailName" type="text" size="30" id="leagueEmailName" value="${EmailAccountName}"> <div style="float: left" class="note"> *changes the "From" name of emails</div></td>
+</tr>
+<tr>
+<td class="input">League Gmail Address:</td>
+<td><input name="leagueEmailAddress" type="text" size="30" id="leagueEmailAddress" value="${EmailAccountAddress}"> pwd: <input class="inputLeft" name="leagueEmailPwd" type="password" size="10" id="leagueEmailPwd" value="${EmailAccountPass}"></td>
+</tr>
+<tr>
+  <td class="input" title="$replyToOrganizerTitle">Set Reply-To address:</td>
+  <td style="text-align: left;" title="$replyToOrganizerTitle">${replyToOrganizerSelection}<br>
+</tr>
+<!-- GAME DAY -->
+<tr><td class="input">Game day/time:</td>
+    <td><select name="gameDay">$gameDaySelection</select>
+     from <input name="gameStart" type="text" size="6" id="gameStart" value="${gameStart}">
+     - <input name="gameEnd" type="text" size="6" id="gameEnd" value="${gameEnd}"> @ 
+     <input name="gameLocation" type="text" size="10" value="${gameLocation}"/></td>
+</tr>
+<tr><td class="input">RSVP/Invite Emails:</td>
+    <td> ${emailStatusSelection} </td>
+</tr>
+<tr><td class="input">Max Players:</td>
+    <td><input name="maxSpots" type="text" size="1" id="maxSpots" value="${maxSpots}"></td>
+</tr>
+<tr><td class="input">Spare Fee: $</td>
+    <td><input name="spareFee" type="text" size="1" id="spareFee" value="${spareFee}"></td>
+</tr>
+<tr>
+<td class="input"><input type="submit" value="Update" /></td><td></td></tr>
+</table>
+</fieldset>
+</form>
+</td>
+</tr>
+
+<!-- Regulars (RSVP) Emails -->
+<tr>
+<td>
+  <fieldset>
+  <legend>Regulars (RSVP) Email:</legend>
+  <form action="leagueInfo.cgi" method="POST">
+    <input name="section" value="regularsConfirm" type="hidden">
+    <table>
+      <tr><td class="input" title="$regularsEmailTitle">Send initial email every:</td>
+          <td><select name="regularsDay">${regularsEmailSelection}</select>
+           at: <input name="regularsTime" type="text" size="6" id="regularsTime" value="${regularsEmailTime}">
+          <input type="submit" value="Update" /> </td>
+          <td></td>
+      </tr>
+    </table>
+  </form>
+
+  <form action="leagueInfo.cgi" method="POST">
+    <input name="section" value="regularsReminder" type="hidden">
+    <table>
+      <tr><td class="input" title="$regularsReminderEmailTitle">
+           ${regularReminderSelection}</td><td class="input" title="$regularsReminderEmailTitle">Send reminder email every:</td>
+          <td><select name="regularsReminderDay">${regularsReminderEmailSelection}</select>
+           at: <input name="regularsReminderTime" type="text" size="6" 
+                 id="regularsReminderTime" value="${regularsReminderEmailTime}">
+          <input type="submit" value="Update" /> </td>
+          <td></td>
+      </tr>
+    </table>
+  </form>
+  </fieldset>
+</td>
+</tr>
+
+<!-- Spares (Invite) Emails -->
+<tr>
+<td>
+<form action="leagueInfo.cgi" method="POST">
+<fieldset>
+<legend>Spares (Invitation) Email:</legend>
+<input name="section" value="spares" type="hidden">
+<table>
+<tr>
+<td class="input" title="${sparesEmailTitle}">Send email every:</td>
+<td><select name="sparesDay">${sparesEmailSelection}</select>
+ at: <input name="sparesTime" type="text" size="6" id="sparesTime" value="${sparesEmailTime}">
+<input type="submit" value="Update" /></td>
+</tr></table>
+</fieldset>
+</form>
+</td>
+</tr>
+
+<!-- Goalie Management -->
+<tr>
+<td>
+<fieldset>
+<legend>Goalie Management:</legend>
+<form action="leagueInfo.cgi" method="POST">
+<input name="section" value="goalieCantCome" type="hidden">
+<table>
+  <tr>
+    <td class="input-left"><b>When a regular goalie can't make it:</b></td>
+  </tr>
+  <tr>
+    <td>&nbsp;&nbsp;${goalieNotifySelection}</td>
+  </tr>
+  <tr>
+    <td title="$manageGoaliesTitle">&nbsp;&nbsp;${manageGoaliesSelection}</td>
+  </tr>
+  <tr>
+    <td>&nbsp;&nbsp;<input type="submit" value="Update" /></td>
+  </tr>
+</table>
+</form>
+
+
+<form action="leagueInfo.cgi" method="POST">
+<input name="section" value="goalieNoResponse" type="hidden">
+<table>
+  <tr>
+    <td class="input-left"><b>When a regular goalie doesn't respond by  </b></td>
+    <td><select name="goalieNoResponseEmailDay">${goalieNoResponseEmailSelection}</select>
+ at: <input name="goalieNoResponseEmailTime" type="text" size="6" id="goalieNoResponseEmailTime" value="${goalieNoResponseEmailTime}">:</td>
+  </tr>
+  <tr>
+    <td>&nbsp;&nbsp;${goalieNoResponseNotifySelection}</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td>&nbsp;&nbsp;<input type="submit" value="Update" /></td>
+    <td></td>
+  </tr>
+</table>
+</form>
+
+</fieldset>
+</td>
+</tr>
+</table>
+
+</body>
+</html>
+
+EOF
+

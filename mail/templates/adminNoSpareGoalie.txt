@@ -1,0 +1,7 @@
+Hi ORGANIZER,
+
+Bad news, all of the goalies have responded and you still need GOALIE_COUNT.
+
+
+Current Goalie Status:
+

@@ -1,0 +1,600 @@
+. functions
+
+# ------------------------------------------------------------------
+# $1 email
+# $2 fname
+# $3 lname
+# $4 pos
+# $5 type
+function printPlayerInfoForm () {
+
+  if [[ $CGI_action == "add" ]] ; then
+    action="<input type=\"hidden\" name=\"action\" id=\"action\" value=\"add\">"
+    actionButton="<button type=\"submit\" class=\"btn btn-small btn-primary\" >Add</button>"
+  else
+    action="<input type=\"hidden\" name=\"action\" id=\"action\" value=\"update\">"
+    actionButton="<button type=\"submit\" class=\"btn btn-small btn-primary\" >Update</button>"
+
+    # get the current player info, the players identifier (email address) is
+    # passed in via the '$CGI_plist' variable, which should only be 1
+    record=`grep -i $CGI_plist ${ROSTER}`
+    CGI_email=`echo $record | awk -F~ '{print $1}'`
+    CGI_fname=`echo $record | awk -F~ '{print $2}'`
+    CGI_lname=`echo $record | awk -F~ '{print $3}'`
+    CGI_type=`echo $record | awk -F~ '{print $4}'`
+    CGI_pos=`echo $record | awk -F~ '{print $5}'`
+  fi
+
+  
+  if [[ $CGI_fname != "" ]] ; then
+    fnameInput="<td><input type=\"text\" name=\"fname\" id=\"fname\" value=\"$CGI_fname\" required></td>"
+  else
+    fnameInput='<td><input type="text" name="fname" id="fname" placeholder="First Name" required></td>'
+  fi
+
+  if [[ $CGI_lname != "" ]] ; then
+    lnameInput="<td><input type=\"text\" name=\"lname\" id=\"lname\" value=\"$CGI_lname\" required></td>"
+  else
+    lnameInput="<td><input type=\"text\" name=\"lname\" id=\"lname\" placeholder=\"Last Name\" required></td>"
+  fi
+
+  # create a hidden value that represents the id of the player
+  if [[ $CGI_id != "" ]] ; then
+    hiddenId="<input type=\"hidden\" name=\"id\" id=\"id\" value=\"${CGI_id}\">"
+  else
+    id=`/usr/bin/dbus-uuidgen`
+    hiddenId="<input type=\"hidden\" name=\"id\" id=\"id\" value=\"${id}\">"
+  fi
+
+  # create a hidden value that represents the old email, which we'll use as key
+  if [[ $CGI_email != "" ]] ; then
+    emailKey="<input type=\"hidden\" name=\"email\" id=\"oemail\" value=\"$CGI_email\">"
+  else
+    emailKey="<input type=\"hidden\" name=\"email\" id=\"oemail\" value=\"\">"
+  fi
+  
+  if [[ $CGI_email != "" ]] ; then
+    emailInput="<td>"
+    emailInput+="<div class=\"input-prepend\"><span class=\"add-on\"><i class=\"icon-envelope\"></i></span>"
+    emailInput+="<input type=\"email\" name=\"newemail\" id=\"nemail\" value=\"$CGI_email\" required>"
+    emailInput+="</div></td>"
+  else
+    emailInput="<td>"
+    emailInput+="<div class=\"input-prepend\"><span class=\"add-on\"><i class=\"icon-envelope\"></i></span>"
+    emailInput+="<input type=\"email\" name=\"newemail\" id=\"nemail\" placeholder=\"email address\" required>"
+    emailInput+="</div></td>"
+  fi
+
+  # TODO: grab the positions from the DB
+  # rows=`sqlite3 ${DATABASE} "select * from positions;"`
+  #for row in `sqlite3 ${DATABASE} "select * from positions;"` ; do
+  #  posId=`echo $row | awk -F"|" '{print $1}'`
+  #  posName=`echo $row | awk -F"|" '{print $2}'`
+  #  if [ ${CGI_pos} == ${posId} ] ; then
+  #    printf "<option value=\"${posId}\" selected=\"selected\">${posName}</option>"
+  #  else
+  #    posInput="<option value=\"${posId}\">${posName}</option>
+  #  fi
+  #done
+  if [[ $CGI_pos == "g" ]] ; then
+    posInput="<option value=\"skater\">skater</option><option value=\"goalie\" selected=\"selected\">goalie</option>"    
+  else
+    posInput="<option value=\"skater\" selected=\"selected\">skater</option><option value=\"goalie\">goalie</option>"
+  fi
+
+  case "$CGI_type" in
+    r)
+      typeInput="<option value=\"regular\" selected=\"selected\">regular</option><option value=\"spare\">spare</option><option value=\"inactive\">inactive</option>"
+      ;;
+    s)
+      typeInput="<option value=\"regular\">regular</option><option value=\"spare\" selected=\"selected\">spare</option><option value=\"inactive\">inactive</option>"
+      ;;
+    i)
+      typeInput="<option value=\"regular\">regular</option><option value=\"spare\">spare</option><option selected=\"selected\" value=\"inactive\">inactive</option>"
+      ;;
+    *)
+      typeInput="<option value=\"regular\" selected=\"selected\">regular</option><option value=\"spare\">spare</option><option value=\"inactive\">inactive</option>"
+      ;;
+  esac
+  
+
+
+
+#printf "</HEAD>\n"
+#printf "<BODY>\n"
+#printf "<fieldset class=\"playerForm\">\n"
+cat<<EEE
+<div class="row-fluid" style="padding:15px 0px 10px 0px;">
+  <div class="span4 bubble-fieldset" >
+EEE
+printf "<legend>Player information:</legend>\n"
+printf "<form name=\"playerInfo\" method=\"POST\" onsubmit=\"return validateForm();\" action=\"bulkRoster-rsi.html\">\n"
+echo $action
+echo $hiddenId
+echo $emailKey
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+printf "<table border=\"0\" cellpadding=\"5\">\n"
+printf "<tr><td >First Name:</td>\n"
+#<td><input type="text"  placeholder="First Name" name="fname" id="fname" ></td>
+echo $fnameInput
+printf "</tr>\n"
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+printf "<tr><td >Last Name:</td>\n"
+#<td><input type="text" placeholder="Last Name" name="lame" id="lname" ></td>
+echo $lnameInput
+printf "</tr>\n"
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+printf "<tr><td >Email:</td>\n"
+echo $emailInput
+printf "</tr>\n"
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+printf "<tr><td>Position:</td>\n"
+printf "<td><select class=\"input-small\" name=\"pos\" id=\"pos\">\n"
+#<option value="skater" selected="selected">skater</option>
+#<option value="goalie">goalie</option>
+echo $posInput
+printf "</select></td></tr>\n"
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+printf "<tr><td>Player Type:</td>\n"
+printf "<td><select class=\"input-small\" name=\"type\" id=\"playerTyp\">\n"
+#<option value="spare"  selected="selected">spare</option>
+#<option value="regular">regular</option>
+echo $typeInput
+printf "</select></td></tr>\n"
+printf "</table>\n"
+
+#printf "<br><input type=\"button\" value=\"Cancel\" onclick=\"window.location = 'bulkRoster-rsi.html'\">\n"
+printf "<br><button class=\"btn btn-small btn-warning\" onclick=\"window.location = 'bulkRoster-rsi.html'\">Cancel</button>\n"
+echo $actionButton
+printf "</form>\n"
+#printf "</fieldset>\n"
+cat<<EEE
+  </div> <!-- /style="background-color: -->
+</div> <!-- /class="row-fluid" -->
+EEE
+}
+
+# ------------------------------------------------------------------
+# $1 email
+# $2 fname
+# $3 lname
+# $4 pos
+# $5 type
+function printPlayerInfoFormDivs () {
+
+  if [[ $CGI_action == "add" ]] ; then
+    action="<input type=\"hidden\" name=\"action\" id=\"action\" value=\"add\">"
+    actionButton="<button type=\"submit\" class=\"btn btn-small btn-primary\" >Add</button>"
+  else
+    action="<input type=\"hidden\" name=\"action\" id=\"action\" value=\"update\">"
+    actionButton="<button type=\"submit\" class=\"btn btn-small btn-primary\" >Update</button>"
+
+    # get the current player info, the players identifier (email address) is
+    # passed in via the '$CGI_plist' variable, which should only be 1
+    record=`grep -i $CGI_plist ${ROSTER}`
+    CGI_email=`echo $record | awk -F~ '{print $1}'`
+    CGI_fname=`echo $record | awk -F~ '{print $2}'`
+    CGI_lname=`echo $record | awk -F~ '{print $3}'`
+    CGI_type=`echo $record | awk -F~ '{print $4}'`
+    CGI_pos=`echo $record | awk -F~ '{print $5}'`
+  fi
+
+  
+  if [[ $CGI_fname != "" ]] ; then
+    fnameInput="<td><input type=\"text\" name=\"fname\" id=\"fname\" value=\"$CGI_fname\" required></td>"
+  else
+    fnameInput='<td><input type="text" name="fname" id="fname" placeholder="First Name" required></td>'
+  fi
+
+  if [[ $CGI_lname != "" ]] ; then
+    lnameInput="<td><input type=\"text\" name=\"lname\" id=\"lname\" value=\"$CGI_lname\" required></td>"
+  else
+    lnameInput="<td><input type=\"text\" name=\"lname\" id=\"lname\" placeholder=\"Last Name\" required></td>"
+  fi
+
+  # create a hidden value that represents the id of the player
+  if [[ $CGI_id != "" ]] ; then
+    hiddenId="<input type=\"hidden\" name=\"id\" id=\"id\" value=\"${CGI_id}\">"
+  else
+    id=`/usr/bin/dbus-uuidgen`
+    hiddenId="<input type=\"hidden\" name=\"id\" id=\"id\" value=\"${id}\">"
+  fi
+
+  # create a hidden value that represents the old email, which we'll use as key
+  if [[ $CGI_email != "" ]] ; then
+    emailKey="<input type=\"hidden\" name=\"email\" id=\"oemail\" value=\"$CGI_email\">"
+  else
+    emailKey="<input type=\"hidden\" name=\"email\" id=\"oemail\" value=\"\">"
+  fi
+  
+  if [[ $CGI_email != "" ]] ; then
+    emailInput="<td>"
+    emailInput+="<div class=\"input-prepend\"><span class=\"add-on\"><i class=\"icon-envelope\"></i></span>"
+    emailInput+="<input type=\"email\" name=\"newemail\" id=\"nemail\" value=\"$CGI_email\" required>"
+    emailInput+="</div></td>"
+  else
+    emailInput="<td>"
+    emailInput+="<div class=\"input-prepend\"><span class=\"add-on\"><i class=\"icon-envelope\"></i></span>"
+    emailInput+="<input type=\"email\" name=\"newemail\" id=\"nemail\" placeholder=\"email address\" required>"
+    emailInput+="</div></td>"
+  fi
+
+  # TODO: grab the positions from the DB
+  # rows=`sqlite3 ${DATABASE} "select * from positions;"`
+  #for row in `sqlite3 ${DATABASE} "select * from positions;"` ; do
+  #  posId=`echo $row | awk -F"|" '{print $1}'`
+  #  posName=`echo $row | awk -F"|" '{print $2}'`
+  #  if [ ${CGI_pos} == ${posId} ] ; then
+  #    printf "<option value=\"${posId}\" selected=\"selected\">${posName}</option>"
+  #  else
+  #    posInput="<option value=\"${posId}\">${posName}</option>
+  #  fi
+  #done
+  if [[ $CGI_pos == "g" ]] ; then
+    posInput="<option value=\"skater\">skater</option><option value=\"goalie\" selected=\"selected\">goalie</option>"    
+  else
+    posInput="<option value=\"skater\" selected=\"selected\">skater</option><option value=\"goalie\">goalie</option>"
+  fi
+
+  case "$CGI_type" in
+    r)
+      typeInput="<option value=\"regular\" selected=\"selected\">regular</option><option value=\"spare\">spare</option><option value=\"inactive\">inactive</option>"
+      ;;
+    s)
+      typeInput="<option value=\"regular\">regular</option><option value=\"spare\" selected=\"selected\">spare</option><option value=\"inactive\">inactive</option>"
+      ;;
+    i)
+      typeInput="<option value=\"regular\">regular</option><option value=\"spare\">spare</option><option selected=\"selected\" value=\"inactive\">inactive</option>"
+      ;;
+    *)
+      typeInput="<option value=\"regular\" selected=\"selected\">regular</option><option value=\"spare\">spare</option><option value=\"inactive\">inactive</option>"
+      ;;
+  esac
+  
+
+cat<<EEE
+<div class="row-fluid" style="padding:15px 0px 10px 0px;">
+  <div class="span4 bubble-fieldset">
+  <legend>Player information:</legend>
+<form name="playerInfo" class=""  method="POST" onsubmit="return validateForm();" action="bulkRoster-rsi.html">
+$action
+$hiddenId
+$emailKey
+        <!-- Player First Name -->
+        <div class="control-group">
+          <label class="control-label" style="width:auto;margin:4px 5px 0px 0px; float: left;" for="fname">First Name:</label>
+          <div class="controls" style="margin-left:auto;">
+            <input type="text" class="input-small" name="fname" id="fname" value="${CGI_fname}" placeholder="First Name" />
+          </div> <!-- /controls -->
+        </div> <!-- /control-group -->
+
+        <!-- Player Last Name -->
+        <div class="control-group">
+          <label class="control-label" style="width:auto; margin:4px 5px 0px 0px; float: left;" for="lname">Last Name:</label>
+          <div class="controls" style="margin-left:auto;">
+            <input type="text" class="input-small" name="lname" id="lname" value="${CGI_lname}" placeholder="Last Name"/>
+          </div> <!-- /controls -->
+        </div> <!-- /control-group -->
+
+        <!-- Email -->
+        <div class="control-group">
+          <label class="control-label" style="width:auto; margin:4px 5px 0px 0px; float: left;" for="nemail">Email:</label>
+          <div class="controls" style="margin-left:auto">
+            <div class="input-prepend"><span class="add-on"><i class="icon-envelope"></i></span>
+              <input type="email" class="input-medium" name="newemail" id="nemail" value="${CGI_email}" placeholder="player@email.com"/>
+            </div>
+          </div> <!-- /controls -->
+        </div> <!-- /control-group -->
+        
+        <!-- Position -->
+        <div class="control-group">
+          <label class="control-label" style="width:auto; margin:4px 5px 0px 0px; float: left;" for="pos">Position:</label>
+          <div class="controls" style="margin-left:auto;">
+<select class="input-small" name="pos" id="pos">$posInput</select>
+          </div> <!-- /controls -->
+        </div> <!-- /control-group -->
+
+        <!-- Player Type-->
+        <div class="control-group">
+          <label class="control-label" style="width:auto; margin:4px 5px 0px 0px; float: left;" for="type"> Type:</label>
+          <div class="controls" style="margin-left:auto;">
+<select class="input-small" name="type" id="playerTyp">$typeInput</select>
+          </div> <!-- /controls -->
+        </div> <!-- /control-group -->
+
+        <!-- form button -->
+        <div class="control-group">
+          <div class="controls">
+            <button type="button" class="btn btn-small btn-warning" onclick="window.location = 'bulkRoster-rsi.html'">Cancel</button>
+            $actionButton         
+          </div>
+        </div>
+
+</form>
+  </div> <!-- /style="background-color: -->
+</div> <!-- /class="row-fluid" -->
+
+EEE
+}
+
+
+
+# ------------------------------------------------------------------
+# $1 gameId
+function printGameInfoForm () {
+
+  if [[ $CGI_action == "add" ]] ; then
+    action="<input type=\"hidden\" name=\"action\" id=\"action\" value=\"add\">"
+    actionButton="<button id=\"addOrUpdate\" type=\"submit\" class=\"btn btn-small btn-primary\" >Add</button>"
+        
+  else
+    action="<input type=\"hidden\" name=\"action\" id=\"action\" value=\"update\">"
+    actionButton="<button id=\"addOrUpdate\" type=\"submit\" class=\"btn btn-small btn-primary\" >Update</button>"
+
+    # get the current game info, the gameId is passed via the
+    # '$CGI_gameIds' variable, which should only be 1
+    #
+    # Schedule file:
+    #  gameId~location~endTime
+    #
+    # gameID: $CGI_glist
+    if [[ ${scoreTracker} == "yes" ]] ; then
+      IFS="~" read gameId origGameTimestamp origGameDay origGameStart origLocation origEndTime origActive origOpponent origPtsFor origPtsAgainst <<< "$(grep "^${CGI_glist}~.*" ${SCHEDULE})"
+    else
+      IFS="~" read gameId origGameTimestamp origGameDay origGameStart origLocation origEndTime origActive <<< "$(grep "^${CGI_glist}~.*" ${SCHEDULE})"
+    fi
+    gameStartDate=$origGameDay
+    gameStart=$origGameStart
+    gameEnd=$origEndTime
+  fi
+
+
+cat<<EEE
+<div class="row-fluid" style="padding:15px 0px 10px 0px;">
+  <form name="schedule" class="" onsubmit="return validateForm();" method="POST" action="variableSchedule.html">
+  $action
+EEE
+
+if [ $CGI_action == "edt" ] ; then
+  printf "<input type=\"hidden\" name=\"gameId\" value=\"${gameId}\">\n"
+  printf "<input type=\"hidden\" name=\"origGameTimestamp\" value=\"${origGameTimestamp}\">\n"
+  printf "<input type=\"hidden\" name=\"origGameDay\"   value=\"${origGameDay}\">\n"
+  printf "<input type=\"hidden\" name=\"origGameStart\" value=\"${origGameStart}\">\n"
+  printf "<input type=\"hidden\" name=\"origLocation\"  value=\"${origLocation}\">\n"
+  printf "<input type=\"hidden\" name=\"origGameEnd\"   value=\"${origEndTime}\">\n"
+  printf "<input type=\"hidden\" name=\"origActive\"    value=\"${origActive}\">\n"
+  if [[  ${scoreTracker} == "yes" ]] ; then
+    printf "<input type=\"hidden\" name=\"origOpponent\"   value=\"${origOpponent}\">\n"
+    printf "<input type=\"hidden\" name=\"origPtsFor\"     value=\"${origPtsFor}\">\n"
+    printf "<input type=\"hidden\" name=\"origPtsAgaisnt\" value=\"${origPtsAgainst}\">\n"
+  fi
+fi
+
+cat <<EEE
+  <legend>Game Info</legend>
+      <div class="row-fluid">
+        <div class="span6">
+          <!--<div class="row-fluid">-->
+            <div class="span2">
+              <label>Date</label>
+              <!-- <input type="text" class="span12" > -->
+              <input type="text" class="span12" value="${gameStartDate}" id="dpd1" name="dpd1">
+            </div><!--/span-->
+            <div class="span3">
+              <label>Location</label>
+              <input type="text" name="location" class="span12" value="$origLocation" placeholder="location">
+            </div><!--/span-->
+            <div class="span2"> 
+              <!-- Game Start -->
+              <div class="control-group">
+                <label class="control-label" for="startTime">Start:</label>
+                <div class="controls">
+                  <div id="startTimePicker">
+                    <input readonly style="background-color: #ffffff;cursor: pointer;" type="text" data-format="HH:mm PP" class="input-mini add-on-target" name="gameStart" id="startTime" value="${gameStart:-9:00 PM}"/>
+                  </div>
+                </div> <!-- /controls -->
+              </div> <!-- /control-group -->
+              
+            </div><!--/span2 Game Start-->
+            
+           <div class="span2">
+             <!-- Game End -->
+             <div class="control-group">
+             <label class="control-label" for="gameEnd">End Time:</label>
+             <div class="controls">
+               <div id="endTimePicker" >
+                 <input readonly style="background-color: #ffffff;cursor: pointer;" type="text" data-format="HH:mm PP" class="input-mini add-on-target" name="gameEnd" id="gameEnd" value="${gameEnd:-10:00 PM}"/>
+               </div> <!-- id="endTimePicker" -->
+             </div> <!-- div class="controls"-->
+             </div><!--class="control-group"-->
+           </div> <!-- span2-->
+EEE
+if [[ $CGI_action == "add" ]] ; then
+cat <<EORU
+           <div class="span2">
+              <label>Repeats Until</label>
+              <input type="text" class="span12"  name="dpd2" value="" id="dpd2" >
+            </div><!--/span-->
+EORU
+fi
+cat << EEE
+         </div><!--/row-->
+       </div><!--/row-->
+EEE
+
+if [ "${scoreTracker}" == "yes" ] ; then
+
+if [[ ${origPtsFor} == "" ]] ; then
+  ptsForValueOrPlaceholder="placeholder=\"0\""
+else
+  ptsForValueOrPlaceholder="value=\"${origPtsFor}\""
+fi
+
+if [[ ${origPtsAgainst} == "" ]] ; then
+  ptsAgainstValOrPlaceholder="placeholder=\"0\""
+else
+  ptsAgainstValOrPlaceholder="value=\"${origPtsAgainst}\""
+fi
+
+cat<<EER
+      <div class="row-fluid">
+        <div style="float:left;" class="span6">
+            <div style="display:inline-block;">
+              <label>Opponent</label>
+              <input type="text" name="opponent" class="span10" value="$origOpponent" placeholder="Opponent">
+            </div>
+          </div>
+        </div>
+
+EER
+fi
+
+cat << EEE
+
+       </div><!--row-->
+       
+        <!-- form button -->
+        <div class="control-group">
+          <div class="controls">
+            <input type="button" class="btn btn-small btn-warning" onclick="window.location = 'variableSchedule.html'" value="Go Back"></input>
+            $actionButton         
+          </div>
+        </div>
+
+</form>
+  </div> <!-- /style="background-color: -->
+</div> <!-- /class="row-fluid" -->
+                                                                                                   
+
+EEE
+}
+
+
+
+# ------------------------------------------------------------------
+# $1 gameId
+function printScoreEntryForm () {
+
+  action="<input type=\"hidden\" name=\"action\" id=\"action\" value=\"score\">"
+  actionButton="<button id=\"addOrUpdate\" type=\"submit\" class=\"btn btn-small btn-primary\" >Update</button>"
+
+  # get the current game info, the gameId is passed via the
+  # '$CGI_gameIds' variable, which should only be 1
+  #
+  # Schedule file:
+  #  gameId~location~endTime
+  #
+  # gameID: $CGI_glist
+  IFS="~" read gameId origGameTimestamp origGameDay origGameStart origLocation origEndTime origActive origOpponent origPtsFor origPtsAgainst <<< "$(grep "^${CGI_glist}~.*" ${SCHEDULE})"
+  gameStartDate=$origGameDay
+  gameStart=$origGameStart
+  gameEnd=$origEndTime
+  
+cat<<EEE
+<div class="row-fluid" style="padding:15px 0px 10px 0px;">
+  <form name="schedule" class="" onsubmit="return validateForm();" method="POST" action="variableSchedule.html">
+  $action
+EEE
+
+  printf "<input type=\"hidden\" name=\"gameId\" value=\"${gameId}\">\n"
+  printf "<input type=\"hidden\" name=\"origOpponent\"   value=\"${origOpponent}\">\n"
+  printf "<input type=\"hidden\" name=\"origPtsFor\"     value=\"${origPtsFor}\">\n"
+  printf "<input type=\"hidden\" name=\"origPtsAgaisnt\" value=\"${origPtsAgainst}\">\n"
+
+cat <<EEE
+  <legend>Game Info</legend>
+      <div class="row-fluid">
+        <div class="span6">
+          <!--<div class="row-fluid">-->
+            <div class="span2">
+              <label>Date</label>
+              <!-- <input type="text" class="span12" > -->
+              <input disabled type="text" class="span12" value="${gameStartDate}" id="dpd1" name="dpd1">
+            </div><!--/span-->
+            <div class="span3">
+              <label>Location</label>
+              <input disabled type="text" name="location" class="span12" value="$origLocation" placeholder="location">
+            </div><!--/span-->
+            <div class="span2"> 
+              <!-- Game Start -->
+              <div class="control-group">
+                <label class="control-label" for="startTime">Start:</label>
+                <div class="controls">
+                  <div id="startTimePicker">
+                    <input disabled type="text" data-format="HH:mm PP" class="input-mini add-on-target" name="gameStart" id="startTime" value="${gameStart:-9:00 PM}"/>
+                  </div>
+                </div> <!-- /controls -->
+              </div> <!-- /control-group -->
+              
+            </div><!--/span2 Game Start-->
+            
+           <div class="span2">
+             <!-- Game End -->
+             <div class="control-group">
+             <label class="control-label" for="gameEnd">End Time:</label>
+             <div class="controls">
+               <div id="endTimePicker" >
+                 <input disabled  type="text" data-format="HH:mm PP" class="input-mini add-on-target" name="gameEnd" id="gameEnd" value="${gameEnd:-10:00 PM}"/>
+               </div> <!-- id="endTimePicker" -->
+             </div> <!-- div class="controls"-->
+             </div><!--class="control-group"-->
+           </div> <!-- span2-->
+EEE
+cat << EEE
+         </div><!--/row-->
+       </div><!--/row-->
+EEE
+
+if [[ ${origPtsFor} == "" ]] ; then
+  ptsForValueOrPlaceholder="placeholder=\"0\""
+else
+  ptsForValueOrPlaceholder="value=\"${origPtsFor}\""
+fi
+
+if [[ ${origPtsAgainst} == "" ]] ; then
+  ptsAgainstValOrPlaceholder="placeholder=\"0\""
+else
+  ptsAgainstValOrPlaceholder="value=\"${origPtsAgainst}\""
+fi
+
+cat <<EOO
+<div class="row-fluid">
+<div style="float:left;" class="span2">
+<h4>Results:</h4>
+<table style="width:350px">
+  <tr>
+  <td style="font-size:18px;text-align: left;padding-left:5px;border-top: 1px solid black;border-bottom: 1px solid black; ">${LEAGUE_ACRO}</td>
+  <td style="text-align: center; width:35px; border-top: 1px solid black; border-bottom: 1px solid black; border-right: 1px solid black; margin-top: 1px;">
+
+  <input name="ptsFor" type="text" size="2" style="font-size:18px; text-align: center; background:black; color:gold; width: 40px; padding-top: 5px; padding-bottom: 5px; margin-bottom: 1px; margin-top: 1px;" ${ptsForValueOrPlaceholder}></td>
+  
+  <td style="width=10px;">&nbsp;</td>
+  <td style="padding-left: 2px;text-align: center; width:35px; border-top: 1px solid black;border-bottom: 1px solid black;border-left: 1px solid black">
+    <input name="ptsAgainst" type="text" size="2" style="font-size:18px; text-align: center; background:black; color:gold; width: 40px; padding-top: 5px; padding-bottom: 5px; margin-bottom: 1px; margin-top: 1px;" ${ptsAgainstValOrPlaceholder}></td>    
+  <td style="font-size:18px; text-align: right;padding-right:5px;border-top: 1px solid black;border-bottom: 1px solid black;">${origOpponent}</td>
+  </tr>
+  </table>
+  </div>
+</div>
+       </div><!--row-->
+       
+        <!-- form button -->
+        <div class="control-group">
+          <div class="controls">
+            <input type="button" class="btn btn-small btn-warning" onclick="window.location = 'variableSchedule.html'" value="Go Back"></input>
+            $actionButton         
+          </div>
+        </div>
+
+</form>
+  </div> <!-- /style="background-color: -->
+</div> <!-- /class="row-fluid" -->
+                                                                                                   
+
+EOO
+}

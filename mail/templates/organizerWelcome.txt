@@ -1,0 +1,14 @@
+Hi ORGANIZER,
+
+An RSVP system as been setup for your league: EMAIL_ACCOUNT_NAME.
+
+The League Administration*<a href="URL_BASE/admin/>pages will allow you to manage the following:
+
+  - Roster (regulars and spares)
+  - Check Attendance
+  - Update League Info (including games time/location etc)
+  - Send group emails
+
+*The administrator userid and password will be sent to you separately.*
+
+Scott

@@ -1,0 +1,4 @@
+Options -Indexes
+Options +FollowSymlinks
+RewriteEngine on
+RewriteRule ^(.*)\.html$ $1.cgi [nc]

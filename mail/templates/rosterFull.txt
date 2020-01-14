@@ -1,0 +1,7 @@
+Hi PLAYER_NAME,
+
+The roster is now *full* for *GAME_DAY* (GAME_TIME) @GAME_LOCATION
+
+ORGANIZER
+
+please remove me from the list<URL_BASE/rsvp.html?email=PLAYER_EMAIL&action=removeMe>

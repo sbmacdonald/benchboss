@@ -1,0 +1,36 @@
+# League Info
+EmailAccountName="Demo Hockey League"
+maxSkaters=20
+denyRegulars="no"
+maxGoalies=2
+spareFee=10
+beerTracker="no"
+LeagueOrganizer="Scott"
+OrganizerEmail="scottmac13@gmail.com"
+scoreTracker="no"
+notifyRecinded="no"
+# RSVP Info
+emailStatus="enabled"
+regularsEmailDay="3"
+regularsEmailTime="8:30 AM"
+regularsReminderFlag="true"
+regularsReminderEmailDay="2"
+regularsReminderEmailTime="8:30 AM"
+sparesEmailDay="1"
+sparesEmailTime="8:30 AM"
+sparesReminderFlag="false"
+sparesReminderEmailDay="0"
+sparesReminderEmailTime="8:30 AM"
+# Hidden
+EmailAccountHost=smtp.gmail.com
+EmailAccountAddress="benchbossleaguemgr@gmail.com"
+EmailAccountPass="L1f31973"
+replyToOrganizer="true"
+LeagueType="Hockey"
+AdminToken=44a5b40f002a1b6efcbde4e8528a6d59
+# Goalie Management
+goalieNotify="true"
+manageGoalies=""
+goalieNoResponseEmailDay="1"
+goalieNoResponseEmailTime="10:30 AM"
+goalieNoResponseNotify="true"

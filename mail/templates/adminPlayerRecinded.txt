@@ -1,0 +1,7 @@
+Hi ORGANIZER,
+
+FYI, (PLAYER_TYPE) PLAYER_NAME (PLAYER_EMAIL) has dropped out of the game:
+
+*GAME_DAY (GAME_TIME) @GAME_LOCATION*
+
+BenchBoss

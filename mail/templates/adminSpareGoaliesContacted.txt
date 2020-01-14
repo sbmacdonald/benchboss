@@ -1,0 +1,9 @@
+Hi ORGANIZER,
+
+Your regular keeper -KEEPER_NAME- said he can't make it this week (DATE).
+
+An email has been sent to the following spare keepers:
+
+SPARE_KEEPER_LIST
+
+

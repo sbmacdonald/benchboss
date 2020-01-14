@@ -1,0 +1,13 @@
+Hi PLAYER_NAME,
+
+Welcome to the EMAIL_ACCOUNT_NAME RSVP system.
+
+Please click on the "Confirm Me!" link below to complete your registration with
+the EMAIL_ACCOUNT_NAME RSVP system.
+
+*Confirm Me !*<URL_BASE/got-it.html?email=PLAYER_EMAIL>
+
+If you do not see a link above, please reply to this email and indicate that you received it.
+
+Thanks !
+ORGANIZER

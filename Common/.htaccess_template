@@ -1,0 +1,14 @@
+Options -Indexes
+<FilesMatch "\.(htaccess|htpasswd)$">
+ Order Allow,Deny
+ Deny from all
+</FilesMatch>
+AuthType Basic
+AuthName "LEAGUE_ACRO Admin"
+AuthUserFile /home/www/xdal.org/root/benchboss/LEAGUE_DIR/admin/.htpasswd
+Require user scottm
+Require user LEAGUE_ADMIN_USERID
+
+Options +FollowSymlinks
+RewriteEngine on
+RewriteRule ^(.*)\.html$ $1.cgi [nc]

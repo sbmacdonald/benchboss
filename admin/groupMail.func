@@ -1,0 +1,212 @@
+#!/bin/bash
+
+function urldecode() {
+  # urldecode <string>
+  
+  local url_encoded="${1//+/ }"
+  printf '%b' "${url_encoded//%/\\x}"
+}
+
+#-----------------------------------------------------------------------------
+# $1 == html message file
+# $2 == txt message file
+function writeMessageFile () {
+  #echo $QUERY_STRING > /tmp/querystring2
+  rawMessage="${MAIL_DIR}/GroupMail-`date '+%a-%b-%d-%H:%M.raw'`"
+
+  echo $CGI_message > ${rawMessage}
+  urldecode $CGI_message | sed ':a;N;$!ba;s/\n/<br>/g' >> $1
+  urldecode $CGI_message >> $2
+}
+
+#-----------------------------------------------------------------------------
+function sendMail() {
+  logInfo "url: $QUERY_STRING" >> ${LOG_FILE}
+  logInfo "message: $CGI_message" >> ${LOG_FILE}
+  
+  htmlmsg="${MAIL_DIR}/GroupMail-`date '+%a-%b-%d-%H:%M.html'`"
+  txtmsg="${MAIL_DIR}/GroupMail-`date '+%a-%b-%d-%H:%M.txt'`"
+  touch ${htmlmsg} ${txtmsg}
+  chmod 777 ${htmlmsg} ${txtmsg}
+  printf "<meta http-equiv=\"Content-Type\" " >> ${htmlmsg}
+  printf "content=\"text/html; charset=iso-8859-1\">" >> ${htmlmsg} 
+
+  . $LEAGUE_CFG
+
+  logInfo "[$REMOTE_USER]: Sending group email:  To: ${CGI_emailToRegulars+regulars} ${CGI_emailToSpares+spares} Subject: $CGI_subject files: ${htmlmsg} ${txtmsg}" >> $leagueLogFile
+  logInfo "[$REMOTE_USER]: Sending group email:  To: ${CGI_emailToRegulars+regulars} ${CGI_emailToSpares+spares} Subject: $CGI_subject files: ${htmlmsg} ${txtmsg}" >> ${LOG_FILE}
+
+  writeMessageFile ${htmlmsg} ${txtmsg}
+
+  
+  if [ "${CGI_plist}" != "" ] ; then
+    plist=${CGI_plist}
+  else
+    if [ ! -z ${CGI_emailToRegulars} ] ; then
+      plist=`awk -F~ '{if($1 !~ /^#/ && $4 ~ /r/ && $6 ~ /c/ ){printf "%s;",$1}}' $ROSTER`
+    fi
+    
+    if [ ! -z ${CGI_emailToSpares} ] ; then
+      plist+=`awk -F~ '{if($1 !~ /^#/ && $4 ~ /s/ && $6 ~ /c/ ){printf "%s;",$1}}' $ROSTER`
+    fi
+    
+    if [ ! -z ${CGI_emailToInactive} ] ; then
+      plist+=`awk -F~ '{if($1 !~ /^#/ && $4 ~ /i/ && $6 ~ /c/ ){printf "%s;",$1}}' $ROSTER`
+    fi
+  fi
+
+  # turn plist into an array of recipients
+  recipients=(${plist//;/ }) 
+  logInfo "plist=" $plist >> $LOG_FILE
+  logInfo "recipients=" ${recipients[@]} >> $LOG_FILE
+  EMAIL_BATCH_SIZE=5
+  EMAIL_BATCH_SEPARATOR=$((RANDOM % 5 + 3))
+  idx=0
+  # Loop over all of the recipients and break them into batches
+  for email in ${recipients[@]} ; do
+    
+    sendmailViaGmail ${email} "$CGI_subject" ${htmlmsg} ${txtmsg} &
+    
+    logInfo "[$REMOTE_USER]: group email sent to $email" >> ${LOG_FILE}
+    
+    # Throttle email sending to avoid blocking by Gmail servers
+    if [ $((++idx % ${EMAIL_BATCH_SIZE})) -eq 0 ] ; then
+      sleep ${EMAIL_BATCH_SEPARATOR}
+    fi    
+  done
+
+  logInfo "[$REMOTE_USER]: group email sent successfully" >> $leagueLogFile
+  logInfo "[$REMOTE_USER]: group email sent successfully" >> ${LOG_FILE}
+  
+cat <<EOF
+Status: 302 redirect
+Location: groupMail.html?action=success
+
+EOF
+ exit
+}
+
+#-----------------------------------------------------------------------------
+function printMailForm () {
+
+  # Start building the web page that will be displayed
+  htmlHeader
+
+  sed -e "s|LEAGUE_ACRO|${LEAGUE_ACRO}|g" \
+      -e "s|USERNAME|$REMOTE_USER|g" \
+      -e "s|TAB_ADMIN|active|" \
+      -e "s|SUPERUSER_ADMIN_PAGE|${BB_ADMIN_LINK}|" \
+      -e "s|BEER_MENU_DISPLAY|$([ \"$beerTracker\" == \"yes\" ] && echo yes || echo none)|" \
+      -e "s|MENU_4|active|" template-header.html
+         
+cat << EOF
+<html>
+<head>
+
+<script  type="text/javascript">  
+function urlencode()
+{
+var txt=document.getElementById("message").value;
+var encodetxt=encodeURI(txt)
+document.getElementById("message").innerHTML=encodetxt
+}  
+
+function urlencodee () {  
+  str = document.getElementById("message").value;
+  encodedString=encodeURIComponent(str);
+  encodedString.replace(/~/g, '%7E').replace(/\!/g, '%21').replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/\*/g, '%2A').replace(/"/g,'%22').replace(/%20/g, '+');
+  document.getElementById("message").value=encodedString;
+}  
+</script>
+</head>
+EOF
+
+
+cat<<EOF
+<legend>Send Goup Email:</legend>
+    <form class="form-horizontal" method="POST" accept-charset="ISO-8859-1">
+      <input type="hidden" name="action" id="action" value="send">
+      <div class="control-group">
+        <label class="control-label" for="inputEmail">To:</label>
+EOF
+if [ "${CGI_plist}" == "" ] ; then
+cat <<EOF        
+        <div class="controls">
+          <label class="checkbox"><input name="emailToRegulars" type="checkbox" checked> Regulars</label>
+          <label class="checkbox"><input name="emailToSpares" type="checkbox" checked> Spares</label>
+          <label class="checkbox"><input name="emailToInactive" type="checkbox" > Inactive</label>
+        </div>
+      </div>
+EOF
+else
+cat<<EOF
+        <div class="controls">
+          <input type="text" id="plist" name="plist" class="input-xlarge" value="${CGI_plist}" readonly></label>
+        </div>
+      </div>  
+EOF
+fi
+cat<<EOF
+
+      <div class="control-group">
+        <label class="control-label" for="replyToOrganizer">Reply-To:</label>
+        <div class="controls">
+          <input type="text" name="replyToOrganizer" id="replyToOrganizer" class="input-xlarge" value="${OrganizerEmail}">
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="subject">Subject:</label>
+        <div class="controls">
+          <input type="text" id="subject" name="subject" class="input-xlarge" placeholder="Subject"  value="${CGI_subject}">
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="message">Message:</label>
+        <div class="controls">
+          <textarea rows=8 class="input-xlarge" name="message" id="message"></textarea>
+        </div>
+      </div>
+      
+      <div class="control-group">
+        <div class="controls">      
+EOF
+
+if [[ "${HTTP_REFERER}" != *"groupMail.html" ]] ; then
+  #printf "<br><button class=\"btn btn-small btn-warning\" onclick=\"window.location = 'bulkRoster-rsi.html'\">Cancel</button>\n"
+cat<<EOF
+         <button type="button" class="btn btn-small btn-warning" onclick="window.location = '${HTTP_REFERER}'">Cancel</button>
+EOF
+fi
+
+cat<<EOF
+         <button type="submit" class="btn btn-small btn-primary" onclick="urlencodee()">Send</button>
+        </div>
+      </div>
+
+    </form>
+</body>
+</html>
+EOF
+
+cat template-footer.html
+}
+
+#-----------------------------------------------------------------------------
+function printSuccessPage () {
+  # Start building the web page that will be displayed
+  htmlHeader
+
+  sed -e "s|LEAGUE_ACRO|${LEAGUE_ACRO}|g" \
+      -e "s|USERNAME|$REMOTE_USER|g" \
+      -e "s|TAB_ADMIN|active|" \
+      -e "s|MENU_4|active|" template-header.html
+
+
+cat<<SUCCESS
+  <h3 style="padding: 20px 0px 0px 20px; color:green; font-style: italic;">Your mail was sent !</h3>
+SUCCESS
+  
+  cat template-footer.html
+}

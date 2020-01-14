@@ -1,0 +1,11 @@
+Hi PLAYER_NAME,
+
+A spot has opened up for this *GAME_DAY* (GAME_TIME) @GAME_LOCATION, are you still intereated ?
+
+*Yes I'd still like to come
+* <URL_BASE/rsvp.html?email=PLAYER_EMAIL&action=request>
+     *I can't make it
+*<URL_BASE/rsvp.html?email=PLAYER_EMAIL&action=out>
+
+
+please remove me from the list<URL_BASE/rsvp.html?email=PLAYER_EMAIL&action=removeMe>

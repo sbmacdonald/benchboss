@@ -1,0 +1,10 @@
+Hi PLAYER_NAME,
+
+Our regular keeper -REGULAR_GOALIE- can't play this GAME_DAY (GAME_TIME) @GAME_LOCATION
+
+Can you play ?
+
+*I can play
+* <URL_BASE/rsvp.html?gid=GAME_ID&email=PLAYER_EMAIL&action=request>
+     *I can't make it
+!*<URL_BASE/rsvp.html?gid=GAME_ID&email=PLAYER_EMAIL$action=out>

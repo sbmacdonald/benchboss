@@ -1,0 +1,8 @@
+Hi ORGANIZER,
+
+As promised, here is the account info you need to manage your league:
+
+  user: USERNAME
+  pwd: PASSWD
+
+Scott

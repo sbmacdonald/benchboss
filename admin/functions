@@ -1,0 +1,2729 @@
+# Configuration
+#
+# $Id: config,v 1.2 2006/11/29 16:22:41 scottm Exp $
+#
+
+# This file contains LEAGUE_DIR and LEAGUE_ACRO, but is not part of the repo
+if [ "$1" != "" ] ; then
+  source $1/league.dat
+else
+  source league.dat
+fi
+
+BB_ADMIN_LINK=$([[ ${REMOTE_USER:-undefined} != ${SUPERUSER} ]] && echo "#" || echo "${SUPERUSER_ADMIN_PAGE}")
+
+# Global Function includes
+. /home/www/cgi-bin/include/functions
+. ${ROOT_DIR}/Common/Logging.sh
+
+# XDAL Webby stuff
+leagueUrl="http://xdal.org/benchboss/${LEAGUE_DIR}"
+whosComingUrl="${leagueUrl}/boot/whoscoming.cgi"
+rosterUrl="${leagueUrl}/boot/bulkRoster-rsi.html"
+addPlayerUrl="${leagueUrl}/boot/addPlayer.cgi"
+rsvpUrl="${leagueUrl}/rsvp.cgi"
+
+# get the league config
+. ${LEAGUE_CFG}
+
+# -----------------------------------------------------------------------------
+# $1 == email address
+#
+#EMAIL=0
+#FNAME=1
+#LNAME=2
+#TYPE=3
+#POS=4
+#CONF=5
+#function getPlayerRecord () {
+#  playerRecord=`grep $1 ${ROSTER}`
+#  read -a PLAYER <<< `echo ${line//\~/ }`
+#}
+
+# trim the parameter
+function trim () {
+  trimmed=`echo $1 | tr -d ' '`
+  echo $trimmed
+}
+
+
+# -----------------------------------------------------------------------------
+# Function to generate a logfile for the file that is currency being exectued
+# $1 == BASH_SOURCE
+function getLogFile () {
+  file="${1%.*}.log"
+  #echo "file: $file"
+  touch $file
+  chmod -f 777 $file
+  echo $file
+}
+
+# -----------------------------------------------------------------------------
+# Function that will determine if element $1 is contained in $2
+# $1 == string
+# $2 == quoted array variable
+#
+# Returns: 0 if $1 is contained in the array $2
+#          1 if $1 is *not* contained in the array $2
+#
+# Example:
+#
+#   $ values=(one two three)
+#   $ containsElement "one" "$values[@]"
+#   $ echo $?
+#   0
+#   $ containsElement "zzzz" "$values[@]"
+#   $ echo $?
+#
+#function containsElement () {
+# local e
+# for e in "${@:2}"; do [[ "$e" == "$1" ]] && return 0; done
+# return 1
+#}
+function containsElement () {
+ local e
+ for e in "${@:2}"; do
+   if [[ "$e" == "$1" ]] ; then
+     echo 0;
+     return;
+   fi
+ done
+ echo 1
+}
+
+
+# -----------------------------------------------------------------------------
+# strip all whitespace from the parameter
+function stripWS () {
+  stripped=`echo $1 | tr -d ' '`
+  echo $stripped
+}
+
+# -----------------------------------------------------------------------------
+# trim leading and trailing Whitespace
+function trimWS () {
+  trimmed="${1/# /}"
+  echo "${trimmed/% /}"
+}
+
+# -----------------------------------------------------------------------------
+function availableSpots () {
+ taken=`grep -v "#" ${IN_FILE} |grep -v "~g$" |wc -l`
+ if [ $taken -gt $maxSkaters ] ; then
+   echo 0
+ else
+   expr $maxSkaters - $taken
+ fi
+}
+
+# -----------------------------------------------------------------------------
+# get someone's full name given their email address
+#
+# $1 = email
+function getFullName () {
+  awk -F'~' -v email="$1" '$1 == email {printf "%s %s",$2,$3}' ${ROSTER}
+}
+
+# -----------------------------------------------------------------------------
+# get someone's first name given their email address
+#
+# $1 = email
+function getFirstName () {
+  awk -F'~' -v email="$1" '$1 == email {print $2}' ${ROSTER}
+}
+
+# -----------------------------------------------------------------------------
+# get someone's last name given their email address
+#
+# $1 = email
+function getLastName () {
+  awk -F'~' -v email="$1" '$1 == email {print $3}' ${ROSTER}
+}
+
+# -----------------------------------------------------------------------------
+# get the type (<r>egular|<s>pare) of a player given their email address
+#
+# $1 = email
+function getPlayerType () {
+  awk -F'~' -v email="$1" '$1 == email {print $4}' ${ROSTER}
+}
+
+
+# -----------------------------------------------------------------------------
+# get the position (<g>oalie|<s>kater) of a player given their email address
+function getPlayerPosition () {
+  awk -F'~' -v email="$1" '$1 == email {print $5}' ${ROSTER}
+}
+
+# -----------------------------------------------------------------------------
+# get the date of a game
+function getDate () {
+ if [ `date +%a` != "${gameDay}" ] ; then
+   date -d "next ${gameDay}" "+%A %b-%d"
+ else
+   date -d "today 00:00:00" "+%A %b-%d"
+ fi
+}
+
+
+
+# -----------------------------------------------------------------------------
+# get the day of the next expected game.
+function getGameDay () {
+  if [ `date +%a` != "${gameDay}" ] ; then
+    date -d "next ${gameDay}" "+%a"
+  else
+    date -d "today 00:00:00" "+%a"
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# get the day we care about.  If dow >= thurs, then sun else wed
+function getGameDate () {
+  if [ `date +%a` != "${gameDay}" ] ; then
+    date -d "next ${gameDay}" "+%a %b %e"
+  else
+    date -d "today 00:00:00" "+%a %b %e"
+  fi
+}
+
+
+# -----------------------------------------------------------------------------
+# Set up all of the GAME_ID dependent files
+#
+
+if [ "${GAME_ID}" != "" ] ; then
+  IN_FILE=${DATA_DIR}/${GAME_ID}-in
+  OUT_FILE=${DATA_DIR}/${GAME_ID}-out
+  FULL_FILE=${DATA_DIR}/${GAME_ID}-full
+  GOALIE_FILE=${DATA_DIR}/${GAME_ID}-goalies
+  touch ${IN_FILE} ${OUT_FILE} ${FULL_FILE} ${GOALIE_FILE}
+  chmod -f 777 ${IN_FILE} ${OUT_FILE} ${FULL_FILE} ${GOALIE_FILE}
+  if [ "${beerTracker}" == "yes" ] ; then
+    BEER_TRACKER=${DATA_DIR}/beerTracker
+    BEER_CANDIDATES=${DATA_DIR}/beerCandidates
+    BEER_FILE=${DATA_DIR}/${GAME_ID}-beer
+    touch ${BEER_TRACKER} ${BEER_CANDIDATES} ${BEER_FILE} ${beerTrackerLogFile}
+    chmod -f 777 ${BEER_TRACKER} ${BEER_CANDIDATES} ${BEER_FILE} ${beerTrackerLogFile}
+  fi
+  touch ${DATA_DIR}/sir ${DATA_DIR}/sgresp
+  chmod -f 777 ${DATA_DIR}/sir ${DATA_DIR}/sgresp
+elif [ "${CGI_gid}" != "" ] ; then
+  IN_FILE=${DATA_DIR}/${CGI_gid}-in
+  OUT_FILE=${DATA_DIR}/${CGI_gid}-out
+  FULL_FILE=${DATA_DIR}/${CGI_gid}-full
+  GOALIE_FILE=${DATA_DIR}/${CGI_gid}-goalies
+  touch ${IN_FILE} ${OUT_FILE} ${FULL_FILE} 
+  chmod -f 777 ${IN_FILE} ${OUT_FILE} ${FULL_FILE} ${GOALIE_FILE}
+  if [ "${beerTracker}" == "yes" ] ; then
+    BEER_TRACKER=${DATA_DIR}/beerTracker 
+    BEER_CANDIDATES=${DATA_DIR}/beerCandidates
+    BEER_FILE=${DATA_DIR}/${CGI_gid}-beer
+    touch ${BEER_TRACKER} ${BEER_CANDIDATES} ${BEER_FILE} ${beerTrackerLogFile}
+    chmod -f 777 ${BEER_TRACKER} ${BEER_CANDIDATES} ${BEER_FILE} ${beerTrackerLogFile}
+  fi  
+  touch ${DATA_DIR}/sir ${DATA_DIR}/sgresp
+  chmod -f 777 ${DATA_DIR}/sir ${DATA_DIR}/sgresp
+fi
+
+# -----------------------------------------------------------------------------
+# setup Beer Tracker files
+function setupBeerTracker () {
+  BEER_TRACKER=${DATA_DIR}/beerTracker
+  BEER_CANDIDATES=${DATA_DIR}/beerCandidates
+  touch ${BEER_TRACKER} ${BEER_CANDIDATES}
+  chmod -f 777 ${BEER_TRACKER} ${BEER_CANDIDATES}
+}
+
+
+# -----------------------------------------------------------------------------
+# Determine if a givne player has responded
+# $1 = email
+function hasResponded () {
+ grep -q $1 ${IN_FILE} ${OUT_FILE} ${FULL_FILE}
+ if [ $? -eq 0 ] ; then 
+   echo 1
+ else 
+  echo 0
+ fi
+}
+
+
+# -----------------------------------------------------------------------------
+function getConfirmedGoalieCount () {
+  #cat ${GOALIE_FILE} | grep -c -i "^[A-z].*~[r|s]~[g]~"
+  sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~[r|s]~[g]$"
+}
+
+
+# -----------------------------------------------------------------------------
+# How many regular goalies have declined ?
+function getRegularGoalieDeclinedCount () {
+  grep -c -i "^[A-z].*~[r]~[g]$" ${OUT_FILE}
+}
+
+# -----------------------------------------------------------------------------
+# Edge Case:
+# If a regular goalie has changed their mind from Declined to Confirmed, 
+# but a spare goalie has already confirmed, we need to resolve this.
+# One way is to notify the last spare goalie that the regular has changed
+# their mind.  In order to do this, we need to determine who was the last
+# spare goalie to confirm
+function lastSpareGoalieToConfirm () {
+  grep "^[A-z].*~[s]~[g]$" ${IN_FILE} | awk -F~ 'END{print $2}'
+}
+
+# -----------------------------------------------------------------------------
+# How many spare goalies have confirmed ?
+function getSpareGoalieConfirmedCount () {
+  grep -c -i "^[A-z].*~[s]~[g]~[u|c]$" ${IN_FILE}
+}
+
+# -----------------------------------------------------------------------------
+# How many regular goalies have given a response ?
+#
+function getRegularGoalieResponses () {
+  cat ${IN_FILE} ${OUT_FILE} ${FULL_FILE} 2> /dev/null \
+             | grep -c -i "^[A-z].*~[r]~[g]~[u|c]$"
+}
+# -----------------------------------------------------------------------------
+# How many spare goalies have given a response ?
+#
+function getSpareGoalieResponses () {
+  cat ${IN_FILE} ${OUT_FILE} ${FULL_FILE} 2> /dev/null \
+             | grep -c -i "^[A-z].*~[s]~[g]~[u|c]$"
+}
+# -----------------------------------------------------------------------------
+# How many regular/spare goalies have given a response ?
+#
+function getTotalGoalieResponses () {
+  cat ${IN_FILE} ${OUT_FILE} ${FULL_FILE} 2> /dev/null \
+             | grep -c -i "^[A-z].*~[r|s]~[g]~[u|c]$"
+}
+
+# -----------------------------------------------------------------------------
+# Returns 0 if there are no spare Goalies
+function getRegularGoalieCount () {
+  grep -c -i "^[A-z].*~[r]~[g]~[u|c]~[e|a]$" ${ROSTER}
+}
+# -----------------------------------------------------------------------------
+# Returns 0 if there are no spare Goalies
+function getSpareGoalieCount () {
+  grep -c -i "^[A-z].*~[s]~[g]~[u|c]~[e|a]$" ${ROSTER}
+}
+# -----------------------------------------------------------------------------
+function getTotalGoalieCount () {
+  grep -c -i "^[A-z].*~[r|s]~[g]~[u|c]~[e|a]$" ${ROSTER}
+}
+
+
+# -----------------------------------------------------------------------------
+# Is the player (identified by email address) a regular goalie ?
+# Returns 0 if the email corresponds to a regular goalie
+function isRegularGoalie () {
+  grep -q "^${1}~.*~[r]~[g]~[u|c]~[e|a]$" ${ROSTER}
+  echo $?
+}
+
+# -----------------------------------------------------------------------------
+# Is the player (identified by email address) a spare goalie ?
+# Returns 0 if the email corresponds to a spare goalie
+function isSpareGoalie () {
+  grep -q "^${1}~.*~[s|i]~[g]~[u|c]~[e|a]$" ${ROSTER}
+  echo $?
+}
+# -----------------------------------------------------------------------------
+# Is the player (identified by email address) a goalie ?
+# Returns 0 if the email corresponds to a spare|regular goalie
+function isGoalie () {
+  grep -q "^${1}~.*~[r|s|i]~[g]~[u|c]~[e|a]$" ${ROSTER}
+  echo $?
+}
+
+# -----------------------------------------------------------------------------
+# Is the player (identified by email address) a skater ?
+# Returns 0 if the email corresponds to a skater
+function isSkater () {
+  grep -q "^${1}~.*~[r|s]~[s]~[u|c]~[e|a]$" ${ROSTER}
+  echo $?
+}
+
+# -----------------------------------------------------------------------------
+# Is the player (identified by email address) a spare skater ?
+# Returns 0 if the email corresponds to a spare skater
+function isSpareSkater () {
+  grep -q "^${1}~.*~[s]~[s]~[u|c]~[e|a]$" ${ROSTER}
+  echo $?
+}
+
+# -----------------------------------------------------------------------------
+# Determine if a givne player is a spare
+# $1 = email
+function isSpare () {
+ local type=`getPlayerType $1`
+ if [ "${type}" == "s" ] ; then
+   echo 1
+ else
+   echo 0
+fi
+}
+
+# -----------------------------------------------------------------------------
+# print out the name we want
+#
+# $1 = email
+function printResponseRecord () {
+  when=`date +%D' '%T`
+  printf "%-15s~%s~%s~%s~%s\n" "`getFullName \"$1\"`" "$1" "$when" "`getPlayerType \"$1\"`" "`getPlayerPosition \"$1\"`"
+}
+
+# -----------------------------------------------------------------------------
+# Check to see if a user ($1 == email) previously said they were coming
+# Returns 0 if the user was in the ${IN_FILE}
+#
+function prevConfirmed () {
+  grep -q "$1" ${IN_FILE}
+  # 0 == prevConfirmed, 1 == not prevConfirmed
+  echo $?
+}
+
+# -----------------------------------------------------------------------------
+# Check to see if a user ($1 == email) previously said they were *not* coming
+# returns 0 if ther user has already declined
+#
+function prevDeclined () {
+  grep -q "$1" ${OUT_FILE}
+  # 0 == prevDeclined,  1 == not prevDeclined
+  echo $?
+}
+
+
+# -----------------------------------------------------------------------------
+# The participant identified by $1 == email address has requested to be removed
+# from the RSVP list
+#
+function im_removeMe () {
+
+  email=`trim $1`
+  if [[ ${email} != "" ]] ; then
+    # grab the entry from the roster so we can log it
+    playerRecord=`grep $email ${ROSTER}`
+    logInfo "Delete(self): $playerRecord" >> $rosterLogFile
+    sed -i "/^${email/ /}~.*/d" ${ROSTER}
+    sed -i "/${email}/d" ${IN_FILE} ${OUT_FILE} ${FULL_FILE}
+  else
+    logWarning "Delete(admin): attempted to delete player with empty email address" >> $rosterLogFile
+  fi
+  echo "removeMe"
+}
+
+
+# -----------------------------------------------------------------------------
+# The participant $1 == email address has requested to know who is coming
+#
+function im_att () {
+  # quick check to see if the request is being made for the correct game
+  # This is being done to prevent spares from jumping the queue !
+  dayNow=$(date -d"0:00" +%s)
+  if [ "${GAME_ID}" == "" ] || [ ${GAME_TIMESTAMP} -lt ${dayNow} ] ; then
+    echo "gameOver"
+    return
+  fi
+
+  echo "attendance"
+}
+
+# -----------------------------------------------------------------------------
+# The participant $1 == email address has requested to know who is bringing beer
+#
+function im_ibb () {
+  # quick check to see if the request is being made for the correct game
+  # This is being done to prevent spares from jumping the queue !
+  dayNow=$(date -d"0:00" +%s)
+  if [ "${GAME_ID}" == "" ] || [ ${GAME_TIMESTAMP} -lt ${dayNow} ] ; then
+    echo "gameOver"
+    return
+  fi
+
+  result=`im_in $1`
+  case $result in
+    confirmed)
+      if [ -s ${BEER_FILE} ] ; then
+        # perhaps the same volunteer re-volunteered we'll just tell them they win again !
+        if [ $(grep -c $1 ${BEER_FILE}) -eq 1 ] ; then
+          echo "$1 $(date -d"0:00" +%m/%d/%Y) ${GAME_ID} re-confirmed" >> ${beerTrackerLogFile}
+          echo "beer-confirmed"
+        else
+          # Someone(else) beat them to it... better luck next time !
+          echo "$1 $(date -d"0:00" +%m/%d/%Y) ${GAME_ID} too-late" >> ${beerTrackerLogFile}
+          echo "beer-too-late"
+        fi
+      else
+        # This is the first person to respond
+        echo "$1 $(date -d"0:00" +%m/%d/%Y) ${GAME_ID}" >> ${BEER_TRACKER}
+        echo "$1 $(date -d"0:00" +%m/%d/%Y) ${GAME_ID}" > ${BEER_FILE}
+        echo "$1 $(date -d"0:00" +%m/%d/%Y) ${GAME_ID}" >> ${beerTrackerLogFile}
+        echo "beer-confirmed"  
+      fi
+      ;;
+    full)
+      echo "full"
+      ;;
+    failed)
+      echo "failed"
+      ;;
+  esac
+}
+
+
+
+# -----------------------------------------------------------------------------
+# add someone to the in list for this week
+#
+# $1 = email
+function im_in () {
+# Use ed to simply update the "in|out" status of a user in the file
+# >ed -s ${IN_FILE} <<< $'/scott.macdonald@corp.aol.com/s/out$/in/\nw'
+# -OR-
+# Use ed to remove the users line from the file based on the 
+# users email address:
+# >ed -s ${IN_FILE} <<< $'/scott.macdonald@corp.aol.com/d\nw'
+#
+
+  # quick check to see if the request is being made for the correct game
+  # This is being done to prevent spares from jumping the queue !
+  dayNow=$(date -d"0:00" +%s)
+  if [ "${GAME_ID}" == "" ] || [ ${GAME_TIMESTAMP} -lt ${dayNow} ] ; then
+    echo "gameOver"
+    return
+  fi
+
+  originallyDeclined=`prevDeclined $1`
+  
+  # if this player has already replied... re-confirm
+  if [ `prevConfirmed $1` -eq 0 ] ; then
+    echo "confirmed"
+    return
+  fi
+    
+  # If the roster is full, and we deny regulars
+  if [ `isRegularGoalie $1` -eq 1 -a `availableSpots` -eq 0 -a "${denyRegulars:-no}" == "yes" ] ; then
+    if [ `grep -c $1 ${FULL_FILE}` -eq 0 ] ; then
+      printResponseRecord "$1" >> ${FULL_FILE}
+    fi
+    echo "full"
+  else
+  
+    if [ `prevConfirmed $1` -eq 0 ] ; then
+      echo "confirmed"
+    else
+    
+      # check to see if they previously told us they weren't coming or they
+      # were previously denied
+      sed -i "/$1/d" ${OUT_FILE} ${FULL_FILE}
+
+      # If this is a regular goalie that has changed their mind, and we have 
+      # already gotten a spare goalie to fill in, we need to tell the 
+      # regular goalie, and send an email to the Organizer
+      # Additionally, if the regular goalies has changed his mind, we should
+      # send a "spotFilled" email to the spares who have not responded.
+      if [ `isRegularGoalie $1` -eq 0 -a ${originallyDeclined} -eq 0 ] ; then
+        # If we have 2 goalies, tell the Organizer that the goalie 
+        # problem is solved
+        if [ `getConfirmedGoalieCount` -eq ${maxGoalies} ] ; then
+          sendGoalieProblemSolved $1
+          sendSpotFilledEmails `head -n1 ${GOALIE_FILE} | awk -F~ '{printf "%s",$2}'`
+        #else
+        
+        fi
+      fi
+
+      printResponseRecord "$1" >> ${IN_FILE}
+      if [ $? -eq 0 ] ; then
+       echo "confirmed"
+      else
+        echo "failed"
+      fi
+
+      
+    fi
+  fi    
+}
+
+# -----------------------------------------------------------------------------
+# add a spare someone to the in list for this week if there is room
+#
+# $1 = email
+function im_request () {
+
+  # quick check to see if the request is being made for the correct game
+  # This is being done to prevent spares from jumping the queue !
+  gameID=${CGI_gid}
+  echo "$gameID == ${CGI_gid} ${CGI_email} ${LEAGUE_DIR}" >> /tmp/reguestInfo.txt
+  #chmod 777 /tmp/reguestInfo.txt
+  if [ "${GAME_ID}" == "" ] || [ ${GAME_TIMESTAMP} -lt ${dayNow} ] ; then
+    echo "gameOver"
+    return
+  fi
+
+if [ "$1" != "" ] ; then
+
+  # if they are already coming return confirmed
+  if [ `prevConfirmed $1` -eq 0 ] ; then
+    echo "confirmed"
+    return
+  else
+
+    # Check if the roster is full
+    if [ `isSpareSkater $1` -eq 0 ] && [ `availableSpots` -eq 0 ] ; then
+      # only add the player to the full list once
+      if [ `grep -c $1 ${FULL_FILE}` -eq 0 ] ; then
+        printResponseRecord "$1" >> ${FULL_FILE}
+      fi
+      echo "full"
+      return
+    else
+      # If this is a goalie, ensure that there is room, otherwise
+      # return "full"
+      # [ `wc -l < ${GOALIE_FILE}` -eq 0 ]
+      if [ `isSpareGoalie $1` -eq 0 ] &&
+         [ $(getConfirmedGoalieCount) -eq ${maxGoalies} ] ; then
+         #[ `grep -c "~g~" ${GOALIE_FILE}` -eq ${maxGoalies} ] ; then
+        printResponseRecord "$1" >> ${FULL_FILE}
+        echo "filled"
+      else
+        printResponseRecord "$1" >> ${IN_FILE}
+        if [ $? -eq 0 ] ; then
+          echo "confirmed"
+
+          # check to see if this is a spare keeper
+          if [ `isSpareGoalie $1` -eq 0 ] ; then
+            # If we have 2 goalies, tell the Organizer that the goalie 
+            # problem is solved
+            if [ $(getConfirmedGoalieCount) -eq ${maxGoalies} ] ; then
+              sendGoalieProblemSolved $1
+              sendSpotFilledEmails `head -n1 ${GOALIE_FILE} | awk -F~ '{printf "%s",$2}'`
+            else
+              sendGotReplacementGoalie $1
+            fi
+          fi
+        else
+          echo "failed"
+        fi
+
+       fi # if [ `isSpareGoalie $1` -eq 0 ] &&
+ 
+      # check to see if they previously told us they weren't coming
+      sed -i "/$1/d" ${OUT_FILE}
+
+    fi # if [ `availableSpots` -eq 0 ] ; then
+
+  fi # if [ `prevConfirmed $1` -eq 0 ] ; then
+
+fi # if [ "$1" != "" ] ; then
+}
+
+
+# -----------------------------------------------------------------------------
+function letmein () {
+  
+  # Get a playerInfo struct with the indexes:
+  #   playerInfo=(email fname lname type pos)
+  #IFS=" "
+  playerInfo=($(grep $email ${ROSTER} | sed 's/~/ /g'))
+  email=${playerInfo[0]}
+  fname=${playerInfo[1]}
+  lname=${playerInfo[2]}
+  ptype=${playerInfo[3]}
+  ppos=${playerInfo[4]}
+  if [ $ppos = "s" ] ; then
+    echo "$fname $lname is a skater"
+  fi
+
+  if [ `hasResponded $player` -eq 0 ] ; then
+    echo "hello"
+  fi
+}
+
+
+
+# -----------------------------------------------------------------------------
+# add someout to the out list for this week
+#
+# $1 = email
+function im_out () {
+
+  # quick check to see if the request is being made for the correct game
+  # This is being done to prevent spares from jumping the queue !
+  dayNow=$(date -d"0:00" +%s)
+  if [ "${GAME_ID}" == "" ] || [ ${GAME_TIMESTAMP} -lt ${dayNow} ] ; then
+    echo "gameOver"
+    return
+  fi
+  
+  #declare -a playerInfo=`grep $1 ${ROSTER} | sed 's|~| |g'`
+  # ensure we have a valid email address
+  if [ "$1" != "" ] ; then
+
+    # is the the second response from the regular goalie ?
+    originallyConfirmed=`prevConfirmed $1`
+    originallyDeclined=`prevDeclined $1`
+
+    # see if the user previously said they were coming
+    if [ $originallyConfirmed -eq 0 ] ; then
+      sed -i "/$1/d" ${IN_FILE}
+      printResponseRecord "$1" >> ${OUT_FILE}
+
+      # If this is a Skater -and- the "notifyRecinded" flag is set, send
+      # an email to the organizer
+      `isGoalie $player` -eq 0
+      if [ `isSkater $1` -eq 0 ] && [ "${notifyRecinded}" == "yes" ] ; then
+         sendRecindedEmail $1
+      fi
+      
+      echo "rescinded"
+
+      # This goalie may have been reported as coming, if so, we need to
+      # update the xxxxxx-gaolies file indicating that there is a need
+      # for a goalie
+      if [ `isSpareGoalie $1` -eq 0  ] && [ $originallyConfirmed -eq 0 ] ; then
+        # mark the last goalie that replied "out" as no longer [c]overed
+        line=`grep -n "~c$" ${GOALIE_FILE} | tail -n1 | cut -d: -f1`
+        # remove '~c$` indicating that this gaolie is no longer "[c]overed"
+        # for the game
+        sed -i "${line}s/\(~c$\)//" ${GOALIE_FILE}
+      fi
+      
+      # If Beer Tracker is enabled, we need to check to see if this
+      # player was planning on bringing beer.
+      if [[ "${beerTracker}" == "yes" && -s ${BEER_FILE} ]] ; then
+        if [ $(grep -c $1 ${BEER_FILE}) -eq 1 ] ; then
+          sed -i "/$1/d" ${BEER_FILE} ${BEER_TRACKER}
+          echo "$1 $(date -d"0:00" +%m/%d/%Y) no longer coming" > ${beerTrackerLogFile}
+          sendBeerGuyBailedEmail
+        fi
+      fi
+      
+      # Check to see if any spares have been denied, and send them an email
+      if [ `wc -l ${FULL_FILE} | awk '{prrint $1}'` -ne 0 ] ; then
+        sendSpotOpenedEmail
+      fi
+    else
+      # Only put the person on the out list once !
+      if [ $originallyDeclined -eq 1 ] ; then
+        printResponseRecord "$1" >> ${OUT_FILE}
+      fi 
+      echo "out"
+    fi
+
+    # If a regular goalie can't make it, we'll notify the league Organizer
+    if [ `isRegularGoalie $1` -eq 0 ] ; then
+      # add this goalie's info to the "Mon-Dec-12-2012.goalies" file
+
+      # make sure we dont' send multiple emails if the goalie clicks the 
+      # "can't make it" link several times
+      grep -q $1 ${GOALIE_FILE}
+      if [ $? -eq 1 ] ; then
+        printResponseRecord "$1" >> ${GOALIE_FILE}
+      fi
+
+      if [ "${goalieNotify}" == "true" ] || [ "${manageGoalies}" == "true" ] ; then
+
+        # Send the notice email to the Organizer and Spare goalies iff this is 
+        # the first time this goalie has declined
+        if [ $originallyDeclined -eq 1 ] ; then
+          # this function will also send emails to spares if it is configured
+          adminSendNeedAGoalieEmail $1
+        fi
+      fi
+    fi
+
+
+    # If this is the last spare keeper to reply, then we need to tell 
+    # the Organizer !
+    if [ `isSpareGoalie $1` -eq 0 ] ; then
+
+      # If all of the goalies regulars and spares have replied, and 
+      # we still do not have 2 goalies, send the bad news email
+      if [ `getSpareGoalieResponses` -eq `getSpareGoalieCount` ] &&
+         [ `getRegularGoalieResponses` -eq `getRegularGoalieCount` ] &&
+         [ `getConfirmedGoalieCount` -ne ${maxGoalies} ] ; then
+         adminSendNoSpareGoaliesEmail
+      else
+         # only notify the Organizer if we still have a goalie problem
+         if [ `getConfirmedGoalieCount` -ne ${maxGoalies} ] ; then
+           adminSendSpareGoalieCantComeEmail $1
+         fi
+      fi
+    fi
+
+  fi
+}
+
+# -----------------------------------------------------------------------------
+function leagueHeader () {
+cat << EOE
+<!-- $Id: config,v 1.2 2006/11/29 16:22:41 scottm Exp $ -->
+<?xml version="1.0" encoding="us-ascii"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"
+"http://www.w3.org/TR/2001/REC-xhtml11-20010531/DTD/xhtml11-flat.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+ <head>
+  <title>${EmailAccountName}: are you in or out?</title>
+  <link rel="STYLESHEET" href="${LEAGUE_CSS}" type="text/css"/>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon"/>
+  <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon"/>
+  <meta http-equiv="Content-Type" content="text/html; charset=us-ascii"/>
+ </head>
+ <body>
+EOE
+}
+
+
+# -----------------------------------------------------------------------------
+function rosterHeader () {
+cat << EOEOEOE
+<?xml version="1.0" encoding="us-ascii"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN"
+"http://www.w3.org/TR/2001/REC-xhtml11-20010531/DTD/xhtml11-flat.dtd"> 
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+ <head>
+  <title>Roster for ${LEAGUE_ACRO}</title>
+  <link rel="STYLESHEET" href="/style" type="text/css"/>
+  <link rel="STYLESHEET" href="${LEAGUE_CSS}" type="text/css"/>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon"/>
+  <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon"/>
+  <meta http-equiv="Content-Type" content="text/html; charset=us-ascii"/>
+
+<script language="Javascript" type="text/javascript">
+<!--
+var popup; //A global variable that will act as the Popup ID
+
+function createPopup(fname, lname, email, position, type) {
+
+var positionField = (position == "s" ) ? \
+  '<option value="skater" selected="selected">skater</option><option value="goalie">goalie</option>' \
+: '<option value="skater">skater</option><option value="goalie" selected="selected">goalie</option> ';
+
+var typeField = (type == "s" ) ? \
+  '<option value="spare" selected="selected">spare</option><option value="regular">regular</option>' \
+: '<option value="spare">spare</option><option value="regular" selected="selected">regular</option> ';
+
+//Now create the HTML code that is required to make the popup
+//var content = '<html><body><h1>"' + fname + '"</h1>"' + lname + ' ' + email + ' ' + positionField + '"<br /></body></html>'
+
+var content = '<fieldset><legend><b>Player information:</legend> \
+<form name="playerInfo" action="${rosterUrl}?action=submit" method="post"> \
+<table border="0" cellpadding="5"> \
+<tr><td width="80" >First Name</td><td><input type="text" name="FirstName" id="fname" size="20" value="' + fname + '"></td></tr> \
+<tr><td width="80" >Last Name</td><td><input type="text" name="LastName" id="lname" size="20" value="' + lname + '"></td></tr> \
+<tr><td width="80" >Email</td><td><input type="text" name="email" id="emale" size="50" value="' + email + '"></td></tr> \
+<tr><td>Position:</td> <td><select name="position" id="pos"> ' + positionField + '</select></td></tr> \
+<tr><td>Player Type:</td> <td><select name="playerType" id="playerTyp"> ' + typeField + '</select></td></tr> \
+</table><input type="submit" value="Cancel" onclick="window.close()">\
+<input type="button" value="Update" onclick=";window.close()"></form></fieldset><br>'
+
+var pops = window.open("","window","resizeable,width=500,height=300"); //Create the popup
+pops.document.write(content); //Write content into it.
+pops.document.close();	
+}
+
+function makeExternalPopup(fname,lname,email,pos,type) {
+  // Create the popup and store the returning id in the variable 
+  popup = window.open("playerform.html", "popup_id", "width=500,height=300");
+}
+
+//-->
+</script>
+</head>
+<body>
+EOEOEOE
+}
+
+
+# -----------------------------------------------------------------------------
+function attendanceHeader () {
+cat << EOE
+<!-- $Id: config,v 1.2 2006/11/29 16:22:41 scottm Exp $ -->
+<?xml version="1.0" encoding="us-ascii"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/2001/REC-xhtml11-20010531/DTD/xhtml11-flat.dtd"> 
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+ <head>
+  <title>Attendance for `getDate`</title>
+  <link rel="STYLESHEET" href="/style" type="text/css"/>
+  <link rel="STYLESHEET" href="${LEAGUE_CSS}" type="text/css"/>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon"/>
+  <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon"/>
+  <meta http-equiv="Content-Type" content="text/html; charset=us-ascii"/>
+
+ </head>
+ <body>
+EOE
+}
+
+
+# -----------------------------------------------------------------------------
+function registrationHeader () {
+cat << EOE
+<!-- $Id: config,v 1.2 2006/11/29 16:22:41 scottm Exp $ -->
+<?xml version="1.0" encoding="us-ascii"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/2001/REC-xhtml11-20010531/DTD/xhtml11-fl\
+at.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en">
+ <head>
+  <title>Registration Status</title>
+  <link rel="STYLESHEET" href="/style" type="text/css"/>
+  <link rel="STYLESHEET" href="${LEAGUE_CSS}" type="text/css"/>
+  <link rel="icon" href="/favicon.ico" type="image/x-icon"/>
+  <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon"/>
+  <meta http-equiv="Content-Type" content="text/html; charset=us-ascii"/>
+  <META NAME="ROBOTS" CONTENT="NOINDEX, NOFOLLOW">
+
+ </head>
+ <body>
+EOE
+}
+
+# -----------------------------------------------------------------------------
+function htmlFooter () {
+cat << EOE
+ </body>
+</html>
+EOE
+}
+
+# -----------------------------------------------------------------------------
+function leagueFooter () {
+cat << EOE
+ </body>
+</html>
+EOE
+}
+
+
+# -----------------------------------------------------------------------------
+# Print the guts of the roster management page
+function printRosterPage () {
+  tempRosterFile=${ROSTER}.tmp
+  
+  sparesCount=`grep -c -i "^[A-z].*~[s]~[s]~[u|c]~[e|a]$" ${ROSTER}`
+  regularsCount=`grep -c -i "^[A-z].*~[r]~[s]~[u|c]~[e|a]$" ${ROSTER}`
+  urlParams="addPlayer.cgi?action=add"
+  editLink="window.showModalDialog('$urlParams', window, 'dialogWidth: 450px; dialogHeight: 300px; resizable: yes; center:no;')"
+
+
+printf "<h3>Roster Manager</h3>"
+
+#if [ `wc -l ${ROSTER} | awk '{print $1}'` -eq 0 ] ; then
+#  . forms
+#  printRosterTemplateDownloadForm
+#  #printRosterUploadForm
+#fi
+
+printf "<form method=\"post\" action=\"addPlayer.cgi?action=add\">"
+printf "<input type=\"hidden\" name=\"action\" id=\"action\" value=\"add\">"
+printf "<input class=\"btn btn-primary\" type=\"submit\" value=\"Add a new Player &raquo;\" >"
+printf "</form>"
+printf "<hr>\n"
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# G O A L I E S !
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+cat << EEE
+  <h4>Goalies:</h4>
+<table class="table table-hover table-condensed" cellpadding="2" cellspacing="0" border="0">
+<tbody>
+EEE
+  for player in `grep -i "~[r|s]~[g]~[u|c]~[e|a]$" ${ROSTER} | sort -u -t"~" -k1 | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do 
+    deleteLink="${rosterUrl}?action=delete&amp;email=$player"
+    firstName=`getFirstName $player`
+    lastName=`getLastName $player`
+    playerPosition=`getPlayerPosition $player`
+    playerType=`getPlayerType $player`
+    urlParams="addPlayer.cgi?action=edit&fname=$firstName&lname=$lastName&email=$player&pos=$playerPosition&type=$playerType"
+    editLink="${addPlayerUrl}?action=edit&fname=$firstName&lname=$lastName&email=$player&pos=$playerPosition&type=$playerType"
+    if [ $playerType == "regular" ] || [ $playerType == "r" ] ; then
+      moveToLink="${rosterUrl}?action=update&fname=$firstName&lname=$lastName&email=$player&newemail=$player&pos=$playerPosition&type=s"
+      moveToText="spares"
+      moveToIcon="icon-download-alt"
+    else
+      moveToLink="${rosterUrl}?action=update&fname=$firstName&lname=$lastName&email=$player&newemail=$player&pos=$playerPosition&type=r"
+      moveToText="regulars"
+      moveToIcon="icon-upload"
+    fi
+    printf "<tr><td width=\"10\">"
+cat << EOOO
+    <div class="btn-group">
+      <button class="btn btn-primary btn-mini dropdown-toggle" data-toggle="dropdown"><i class="icon-user icon-white"></i><span class="caret"></button>
+      <!-- <button class="btn btn-primary dropdown-toggle btn-mini" data-toggle="dropdown"><span class="caret"></span></button> -->
+      <ul class="dropdown-menu">
+        <li><a href="$editLink"><i class="icon-edit"></i> <small class="text-info">edit</small></a></li>
+        <li><a href="$moveToLink"><i class="$moveToIcon"></i> <small class="text-warning">move to $moveToText</small></a></li>
+        <li><a href="#"><i class="icon-pause"></i>  <small class="text-muted">mark inactive</small></a></li>
+        <li class="divider"></li>
+        <li><a href="$deleteLink"><i class="icon-trash"></i> <small class="text-error">remove</small></a></li>
+      </ul>
+    </div>
+EOOO
+    printf "</td>\n"
+    printf "<td>%s" "`getFullName $player`" 
+    if [ `isSpare $player` -eq 1 ] ; then
+      printf "<i class="muted"> (spare)</i>"
+    fi
+    printf "</td>"
+    printf "</tr>"
+  done
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# R E G U L A R S 
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+cat << EOW
+</tbody>
+</table>
+<br>
+EOW
+cat << EEE
+  <h4>Regulars($regularsCount):</h4>
+<table class="table table-hover table-condensed">
+<tbody>
+EEE
+
+#for player in `sort -t"~" -k1 ${IN_FILE} | awk -F"~" '{printf "%s\n",$2}'` ; do
+  for player in `grep -i "~[r]~[s]~[u|c]~[e|a]$" ${ROSTER} | sort -u -t"~" -k1 |sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do 
+    deleteLink="${rosterUrl}?action=delete&amp;email=$player"
+    firstName=`getFirstName $player`
+    lastName=`getLastName $player`
+    playerPosition=`getPlayerPosition $player`
+    playerType=`getPlayerType $player`
+    urlParams="addPlayer.cgi?action=edit&fname=$firstName&lname=$lastName&email=$player&pos=$playerPosition&type=$playerType"
+    editLink="${addPlayerUrl}?action=edit&fname=$firstName&lname=$lastName&email=$player&pos=$playerPosition&type=$playerType"
+    moveToLink="${rosterUrl}?action=update&fname=$firstName&lname=$lastName&email=$player&newemail=$player&pos=$playerPosition&type=s"
+    moveToText="spares"
+    moveToIcon="icon-download-alt"
+    printf "<tr><td width=\"10\">"
+cat << EOOO
+    <div class="btn-group">
+      <button class="btn btn-primary btn-mini dropdown-toggle" data-toggle="dropdown"><i class="icon-user icon-white"></i><span class="caret"></button>
+      <!-- <button class="btn btn-primary dropdown-toggle btn-mini" data-toggle="dropdown"><span class="caret"></span></button> -->
+      <ul class="dropdown-menu">
+        <li><a href="$editLink"><i class="icon-edit"></i> <small class="text-info">edit</small></a></li>
+        <li><a href="$moveToLink"><i class="$moveToIcon"></i> <small class="text-warning">move to $moveToText</small></a></li>
+        <li><a href="#"><i class="icon-pause"></i>  <small class="text-muted">mark inactive</small></a></li>
+        <li class="divider"></li>
+        <li><a href="$deleteLink"><i class="icon-trash"></i> <small class="text-error">remove</small></a></li>
+      </ul>
+    </div>
+EOOO
+    printf "</td>\n"
+    printf "<td>%s</td>" "`getFullName $player`" 
+    printf "</tr>"
+  done
+cat << EOW
+</tbody>
+</table>
+<br>
+EOW
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# S P A R E S !
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+cat << EOE
+  <h4>Spares($sparesCount):</h4>
+<table class="table table-hover table-condensed" cellpadding="2" cellspacing="0" border="0">
+<tbody>
+EOE
+
+  for player in `grep -i "~[s]~[s]~[u|c]~[e|a]$" ${ROSTER} | sort -u -t"~" -k1 | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do 
+    deleteLink="${rosterUrl}?action=delete&amp;email=$player"
+    firstName=`getFirstName $player`
+    lastName=`getLastName $player`
+    playerPosition=`getPlayerPosition $player`
+    playerType=`getPlayerType $player`
+    urlParams="addPlayer.cgi?action=edit&fname=$firstName&lname=$lastName&email=$player&pos=$playerPosition&type=$playerType"
+    editLink="${addPlayerUrl}?action=edit&fname=$firstName&lname=$lastName&email=$player&pos=$playerPosition&type=$playerType"
+    moveToLink="${rosterUrl}?action=update&fname=$firstName&lname=$lastName&email=$player&newemail=$player&pos=$playerPosition&type=r"
+    moveToText="regulars"
+    moveToIcon="icon-upload"
+
+    printf "<tr><td width=\"10\">"
+cat << EOOO
+    <div class="btn-group">
+      <button class="btn btn-primary btn-mini dropdown-toggle" data-toggle="dropdown"><i class="icon-user icon-white"></i><span class="caret"></button>
+      <!-- <button class="btn btn-primary dropdown-toggle btn-mini" data-toggle="dropdown"><span class="caret"></span></button> -->
+      <ul class="dropdown-menu">
+        <li><a href="$editLink"><i class="icon-edit"></i> <small class="text-info">edit</small></a></li>
+        <li><a href="$moveToLink"><i class="$moveToIcon"></i> <small class="text-warning">move to $moveToText</small></a></li>
+        <li><a href="#"><i class="icon-pause"></i>  <small class="text-muted">mark inactive</small></a></li>
+        <li class="divider"></li>
+        <li><a href="$deleteLink"><i class="icon-trash"></i> <small class="text-error">remove</small></a></li>
+      </ul>
+    </div>
+EOOO
+    printf "</td>\n"
+    printf "<td>%s</td>" "`getFullName $player` "
+    printf "</tr>"
+  done
+
+cat << EOW
+</tbody>
+</table>
+<br>
+EOW
+}
+
+
+
+# -----------------------------------------------------------------------------
+# print the email to send to the administrator when the practice is full
+function printAttendancePage () {
+  goals=`sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~[r|s]~[g]$"`
+  skaters=`sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~[r|s]~[s]$"`
+  #max=`grep -c ${ROSTER}`
+  sps=`sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~[s]~[s]$"`
+  regs=`sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~[r]~[s]$"`
+  regulars="$regs regulars"
+  spares=" $sps spares"
+
+  goals=2
+  skaters=10
+  case $goals in
+    0) goalies="<font color=#ff3333>$goals goalies</font>"
+       goaliesClass="label-important"
+       ;;
+    1) goalies="<font color=#ff3333>$goals goalie</font>"
+       goaliesClass="label-warning"
+       ;;
+    2) goalies="$goals goalies"
+       goaliesClass="label-success"
+       ;;
+    *) goalies="<font color=#ee3333>$goals goalies</font>"
+       ;;
+  esac
+  if [ $skaters -lt 10 ] ; then
+    skatersClass="label-warning"
+  else
+    skatersClass="label-success"
+  fi
+cat << EOE
+  <h4>`getGameDate`</h4>
+
+  <table>
+  <thead>
+  <tr><th style="padding:5px 10px 0px 0px;">Goalies</th>
+      <th style="padding:5px 0px 0px 10px;">Skaters</th></tr>
+  </thead>
+  <tbody>
+  <tr>
+     <td style="text-align: center;padding:5px 10px 0px 0px;"><span class="label $goaliesClass" style="font-size: 14px; line-height:20px;">&nbsp;&nbsp;$goals&nbsp;&nbsp;</span></td>
+     <td style="text-align: center;padding:5px 0px 0px 10px;"><span class="label $skatersClass" style="font-size: 14px; line-height:20px;">&nbsp;&nbsp;$skaters&nbsp;&nbsp;</td>
+  </tr>
+  </tbody>
+  </table>
+<h4 class="out">Coming:</h4>
+
+<table class="table table-hover table-condensed" cellpadding="2" cellspacing="0" border="0">
+EOE
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of regulars who have said they will be there
+for player in `sort -u -t"~" -k1 ${IN_FILE} | awk -F"~" '{printf "%s\n",$2}'` ; do
+  outLink="${whosComingUrl}?action=out&amp;email=$player"
+  printf "<tr><td width=\"10\">"
+cat << EOOO
+    <div class="btn-group">
+      <button class="btn btn-primary btn-mini dropdown-toggle" data-toggle="dropdown"><i class="icon-user icon-white"></i><span class="caret"></button>
+      <!-- <button class="btn btn-primary dropdown-toggle btn-mini" data-toggle="dropdown"><span class="caret"></span></button> -->
+      <ul class="dropdown-menu">
+        <li><a href="$outLink"><i style="color: red;" class="icon-remove"></i> <small class="text-error">not coming</small></a></li>
+      </ul>
+    </div>
+EOOO
+  printf "</td>\n"
+  printf "<td>%s" "`getFullName $player`"
+  if [ `isSpare $player` -eq 1 ] ; then
+    printf "<i class="muted"> (spare)</i>"
+  fi
+  if [ `isGoalie $player` -eq 0 ] ; then
+    printf "<i class="muted"> (goalie)</i>"
+  fi
+  printf "</td>\n"
+  printf "</tr>"
+done
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of people who can't make it
+
+cat << EOW
+</table>
+<hr>
+<h4 class="out">Not coming:</h4>
+<table class="table table-hover table-condensed" cellpadding="2" cellspacing="0" border="0">
+EOW
+for player in `sort -u -t"~" -k1 ${OUT_FILE} | awk -F"~" '{printf "%s\n",$2}'` ; do
+  inLink="${whosComingUrl}?action=in&amp;email=$player"
+  printf "<tr><td width=\"10\">"
+cat << EOOO
+    <div class="btn-group">
+      <button class="btn btn-primary btn-mini dropdown-toggle" data-toggle="dropdown"><i class="icon-user icon-white"></i><span class="caret"></button>
+      <!-- <button class="btn btn-primary dropdown-toggle btn-mini" data-toggle="dropdown"><span class="caret"></span></button> -->
+      <ul class="dropdown-menu">
+        <li><a href="$inLink"><i style="color: green;" class="icon-check"></i> <small class="text-success">coming</small></a></li>
+      </ul>
+    </div>
+EOOO
+  printf "</td>\n"
+  printf "<td>%s" "`getFullName $player`" 
+  if [ `isSpare $player` -eq 1 ] ; then
+    printf "<i class="muted"> (spare)</i>"
+  fi
+  if [ `isGoalie $player` -eq 0 ] ; then
+    printf "<i class="muted"> (goalie)</i>"
+  fi
+  printf "</td>\n"
+  printf "</tr>"
+done
+cat << EOY
+</table><br>
+EOY
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of regulars who have not yet responded
+cat << EOB
+<h4>No response:</h4>
+<table class="table table-hover table-condensed" cellpadding="2" cellspacing="0" border="0">
+EOB
+for player in `grep -i "~[r]~[s|g]~[u|c]~[e|a]$" ${ROSTER} | sort -u -t"~" -k1 |sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'` ; do
+  grep -q $player ${IN_FILE} ${OUT_FILE};
+  if [ $? -ge 1 ] ; then
+    inLink="${whosComingUrl}?action=in&amp;email=$player"
+    outLink="${whosComingUrl}?action=out&amp;email=$player"
+    printf "<tr><td width=\"10\">"
+cat << EOOO
+    <div class="btn-group">
+      <button class="btn btn-primary btn-mini dropdown-toggle" data-toggle="dropdown"><i class="icon-user icon-white"></i><span class="caret"></button>
+      <!-- <button class="btn btn-primary dropdown-toggle btn-mini" data-toggle="dropdown"><span class="caret"></span></button> -->
+      <ul class="dropdown-menu">
+        <li><a href="$inLink"><i style="color: green;" class="icon-check"></i> <small class="text-success">coming</small></a></li>
+        <li class="divider"></li>
+        <li><a href="$outLink"><i style="color: red;" class="icon-remove red"></i> <small class="text-error">not coming</small></a></li>
+      </ul>
+    </div>
+EOOO
+    printf "</td>\n"
+    printf "<td>%s" "`getFullName $player`" 
+    if [ `isGoalie $player` -eq 0 ] ; then
+      printf "<i class=\"muted\"> (goalie)</i>"
+    fi
+    printf "</td>\n"
+    printf "</tr>"
+  fi
+done
+cat << EOW
+</table>
+EOW
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# print the list of spares (if there are any) that were invited, iff it 
+# is a "spares" day
+
+dayofweek=`date +%u`
+#if [ -n ${DATA_DIR}/spares-$day && $dayofweek -ne 1 ] && [ $dayofweek -ne 4 ]  ; then
+  cat << EOS
+    <br>
+    <h4>Spares invited (no response):</h4>
+    <table class="table table-hover table-condensed" cellpadding="2" cellspacing="0" border="0">
+EOS
+  for player in `grep -i "~[s]~[s|g]~[u|c]~[e|a]$" ${ROSTER} | sort -u -t"~" -k1 |sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do 
+    if [ `hasResponded $player` -eq 0 ] ; then 
+    inLink="${whosComingUrl}?action=in&amp;email=$player"
+    outLink="${whosComingUrl}?action=out&amp;email=$player"
+    printf "<tr><td width=\"10\">"
+cat << EOOO
+    <div class="btn-group">
+      <button class="btn btn-primary btn-mini dropdown-toggle" data-toggle="dropdown"><i class="icon-user icon-white"></i><span class="caret"></button>
+      <!-- <button class="btn btn-primary dropdown-toggle btn-mini" data-toggle="dropdown"><span class="caret"></span></button> -->
+      <ul class="dropdown-menu">
+        <li><a href="$inLink"><i style="color: green;" class="icon-check"></i> <small class="text-success">coming</small></a></li>
+        <li class="divider"></li>
+        <li><a href="$outLink"><i style="color: red;" class="icon-remove red"></i> <small class="text-error">not coming</small></a></li>
+      </ul>
+    </div>
+EOOO
+   
+    printf "</td>\n"
+    printf "<td>%s" "`getFullName $player`" 
+    if [ `isGoalie $player` -eq 0 ] ; then
+      printf "<i class="muted"> (goalie)</i>"
+    fi
+    printf "</td>\n"
+    printf "</tr>\n"
+    fi;
+  done
+cat << EOX
+  </table>
+EOX
+#fi
+}
+
+
+# -----------------------------------------------------------------------------
+# print the email to send to the administrator when the practice is full
+function printPublicAttendancePage () {
+  goals=`grep -c -i "^[A-z].*~[r|s]~[g]$" ${IN_FILE}`
+  skaters=`grep -c -i "^[A-z].*~[r|s]~[s]$" ${IN_FILE}`
+  sps=`grep -c -i "^[A-z].*~[s]~[s]$" ${IN_FILE}`
+  regs=`grep -c -i "^[A-z].*~[r]~[s]$" ${IN_FILE}`
+  regulars="$regs regulars"
+  spares=" $sps spares"
+  goalies="$goals goalies"
+  if [ $goals -lt 2 ] ; then
+    if [ $goals -eq 1 ] ; then
+      goalies="<font color=#ff3333>$goals goalie</font>"
+    else
+      goalies="<font color=#ff3333>$goals goalies</font>"
+    fi
+  fi
+date=`getGameDate`
+
+if [ ${sps} -eq 0 ] ; then
+  breakdown=""
+else
+  breakdown="($regulars, $spares)"
+fi
+cat << EOE
+  <h2>Attendance for $date</h2>
+  <h4>$goalies, $skaters skaters $breakdown</h4>
+  <h4>People that said they are coming:</h4>
+<table cellpadding="2" cellspacing="0" border="0">
+EOE
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of regulars who have said they will be there
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+for player in `sort -u -t"~" -k1 ${IN_FILE} | awk -F"~" '{printf "%s\n",$2}'` ; do
+  printf "<tr><td width=\"30\"></td>"
+  printf "<td width=\"160\" class=\"li\">%s</td>" "`getFullName $player`" 
+  if [ `isSpare $player` -eq 1 ] ; then
+    printf "<td class="small">(spare)</td>"
+  fi
+  if [ `isGoalie $player` -eq 0 ] ; then
+    printf "<td class="small">(goalie)</td>"
+  fi
+  printf "</tr>"
+done
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of regulars who have said they can't make it
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+cat << EOW
+</table>
+<br>
+<h4 class="out">People that can't make it:</h4>
+<table cellpadding="2" cellspacing="0" border="0">
+EOW
+for player in `sort -u -t"~" -k1 ${OUT_FILE} | awk -F"~" '{printf "%s\n",$2}'` ; do
+  printf "<tr><td width=\"30\"></td>"
+  printf "<td width=\"160\" class=\"li\">%s</td>" "`getFullName $player`" 
+  if [ `isSpare $player` -eq 1 ] ; then
+    printf "<td class="small">(spare)</td>"
+  fi  
+  if [ `isGoalie $player` -eq 0 ] ; then
+    printf "<td class="small">(goalie)</td>"
+  fi
+  printf "</tr>"
+done
+cat << EOY
+</table><br>
+EOY
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of regulars who have not yet responded
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+cat << EOB
+<h4>Regulars no response:</h4>
+<table cellpadding="2" cellspacing="0" border="0">
+EOB
+for player in `grep -i "~[r]~[s|g]~[u|c]~[e|a]$" ${ROSTER} | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'` ; do
+  grep -q $player ${IN_FILE} ${OUT_FILE};
+  if [ $? -ge 1 ] ; then
+    printf "<tr><td width=\"30\"></td>"
+    printf "<td width=\"160\" class=\"li\">%s</td>" "`getFullName $player`" 
+    #if [ "`getPlayerPosition $player`" == "g" ] ; then
+    #  printf "<td width=\"30\" class=\"small\">(g)</td>"
+    #fi
+    printf "</tr>"
+  fi
+done
+cat << EOW
+</table>
+EOW
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# print the list of spares (if there are any) that were invited, iff it 
+# is a "spares" day
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+dayofweek=`date +%u`
+#if [ -n ${DATA_DIR}/spares-$day && $dayofweek -ne 1 ] && [ $dayofweek -ne 4 ]  ; then
+  cat << EOS
+    <br>
+    <h4>Spares invited (no response):</h4>
+    <table cellpadding="2" cellspacing="0" border="0">
+EOS
+  for player in `grep -i "~[s]~[s|g]~[u|c]~[e|a]$" ${ROSTER} | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do 
+    if [ `hasResponded $player` -eq 0 ] ; then 
+    printf "<tr><td width=\"30\"></td>"
+    printf "<td width=\"160\" class=\"li\">%s</td>" "`getFullName $player`" 
+    printf "</tr>"
+    fi;
+  done
+cat << EOX
+  </table>
+EOX
+#fi
+}
+
+# -----------------------------------------------------------------------------
+# print the email to send to the administrator when the practice is full
+function printPublicAttendancePage_txt () {
+  goals=`grep -c -i "^[A-z].*~[r|s]~[g]$" ${IN_FILE}`
+  skaters=`grep -c -i "^[A-z].*~[r|s]~[s]$" ${IN_FILE}`
+  sps=`grep -c -i "^[A-z].*~[s]~[s]$" ${IN_FILE}`
+  regs=`grep -c -i "^[A-z].*~[r]~[s]$" ${IN_FILE}`
+  regulars="$regs regulars"
+  spares=" $sps spares"
+  goalies="$goals goalies"
+  if [ $goals -lt 2 ] ; then
+    goalies="$goalies"
+  fi
+cat << EOE
+$goalies, $regulars, $spares = $skaters/$maxSkaters skaters
+
+People that said they are coming:
+
+EOE
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of regulars who have said they will be there
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+for player in `sort -u -t"~" -k1 ${IN_FILE} | awk -F"~" '{printf "%s\n",$2}'` ; do
+  printf "%-20s" "`getFullName $player`" 
+  if [ `isSpare $player` -eq 1 ] ; then
+    printf "(spare)"
+  fi
+  printf "\n"
+done
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of regulars who have said they can't make it
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+cat << EOW
+
+People that can't make it:
+
+EOW
+for player in `sort -u -t"~" -k1 ${OUT_FILE} | awk -F"~" '{printf "%s\n",$2}'` ; do
+  printf "%-20s" "`getFullName $player`" 
+  if [ `isSpare $player` -eq 1 ] ; then
+    printf "(spare)"
+  fi
+  printf "\n"
+done
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of regulars who have not yet responded
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+cat << EOB
+
+Regulars no response:
+
+EOB
+for player in `grep -i "~[r]~[s|g]~[u|c]~[e|a]$" ${ROSTER} | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'` ; do
+  grep -q $player ${IN_FILE} ${OUT_FILE};
+  if [ $? -ge 1 ] ; then
+    printf "%s\n" "`getFullName $player`" 
+  fi
+done
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# print the list of spares (if there are any) that were invited, iff it 
+# is a "spares" day
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+cat << EOS
+
+Spares no response:
+
+EOS
+for player in `grep -i "~[s]~[s|g]~[u|c]~[e|a]$" ${ROSTER} | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do 
+  if [ `hasResponded $player` -eq 0 ] ; then 
+    printf "%s\n" "`getFullName $player`" 
+  fi;
+done
+}
+
+
+# -----------------------------------------------------------------------------
+# Generate a html version of the current goalie status
+#
+# Inputs:
+#
+#  $1 == [all|noResp] what goalies to include
+#  $2 == [noLinks|manage] include the management links to allow admin to update
+#        the goalies status
+#
+function printGoalieStatusHtml () {
+  confirmed=`getConfirmedGoalieCount`
+
+  if [ "$1" == "all" ] ; then
+    if [ `getConfirmedGoalieCount` -lt ${maxGoalies} ] ; then
+      confirmedString="<font color=#ff3333>$confirmed</font>"
+    else
+      confirmedString="$confirmed"
+    fi
+  fi
+
+# - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of regulars who have said they will be there
+
+if [ "$1" == "all" ] ; then
+cat << INHEADER
+  <b>Confirmed($confirmedString):</b>
+<table cellpadding="1" cellspacing="0" border="0">
+INHEADER
+for player in `grep -i "~[r|s]~[g]$" ${IN_FILE} | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $2}}'` ; do
+  printf "<tr><td width=\"30\"></td>"
+  printf "<td width=\"170\" class=\"li\">%s</td>" "`getFullName $player`" 
+  if [ `isSpare $player` -eq 1 ] ; then
+    printf "<td class="small">(spare)</td>"
+  fi
+  printf "</tr>"
+done
+cat << INFOOTER
+</table>
+INFOOTER
+fi
+
+# - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of goalies who have said they can't make it
+if [ "$1" == "all" ] ; then
+cat << OUTHEADER
+<br>
+<b>Not coming:</b>
+<table cellpadding="1" cellspacing="0" border="0">
+OUTHEADER
+for player in `grep -i "~[r|s]~[g]$" ${OUT_FILE} | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $2}}'` ; do
+  printf "<tr><td width=\"30\"></td>"
+  printf "<td width=\"170\" class=\"li\">%s</td>" "`getFullName $player`" 
+  if [ `isSpare $player` -eq 1 ] ; then
+    printf "<td class="small">(spare)</td>"
+  fi
+  printf "</tr>"
+done
+cat << OUTFOOTER
+</table>
+OUTFOOTER
+fi
+
+# - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of regulars who have not yet responded
+#if [ `getRegularGoalieResponses` -gt 0 ] || 
+#   [ `getSpareGoalieResponses` -gt 0 ] ; then
+cat << WAITINGHEADER
+<br>
+<b>Still waiting to hear from:</b>
+<table cellpadding="5" cellspacing="0" border="0" >
+WAITINGHEADER
+
+# In "manage" mode, we only display the regular gaolies
+goalieList=`grep -i "~[r|s]~[g]~[u|c]~[e|a]$" ${ROSTER} | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`
+for player in $goalieList ; do
+  if [ `hasResponded $player` -eq 0 ] ; then
+    printf "<tr ><td width=\"30\"></td>"
+    printf "<td width=\"130\" class=\"li\">%s</td>" "`getFullName $player`" 
+
+    # Optionally add the [+] [-] links
+    if [ "$2" == "manage" ] ; then
+      #inLink="${rsvpUrl}?email=${player}&action=in&src=admin"
+      #inLink='<span style="display:inline-block;"><!--[if mso]>'
+      inLink='<!--[if mso]>'
+      inLink+='<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" '
+      inLink+="href=\"${rsvpUrl}?gid=${GAME_ID}&email=${player}&action=in\" "
+      inLink+='style="height:20px;v-text-anchor:middle;width:40px;" arcsize="20%" stroke="f" fillcolor="#658208">'
+      inLink+='<w:anchorlock/><center><![endif]-->'
+      inLink+="<a href=\"${rsvpUrl}?gid=${GAME_ID}&email=${player}&action=in&src=admin\" "
+      inLink+='style="background-color:#658208;border-radius:5px;color:#ffffff;display:inline-block;'
+      inLink+='font-family:sans-serif;font-size:13px;font-weight:bold;line-height:20px;text-align:center;'
+      inLink+='text-decoration:none;width:40px;-webkit-text-size-adjust:none;">in</a>'
+      #inLink+='<!--[if mso]></center></v:roundrect><![endif]--></span>'
+      inLink+='<!--[if mso]></center></v:roundrect><![endif]-->'
+
+      outLink='<span><!--[if mso]>'
+      outLink+='<v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" '
+      outLink+="href=\"${rsvpUrl}?gid=${GAME_ID}&email=${player}&action=out\" "
+      outLink+='style="height:20px;v-text-anchor:middle;width:40px;" arcsize="20%" stroke="f" fillcolor="#f71111">'
+      outLink+='<w:anchorlock/><center><![endif]-->'
+      outLink+="<a href=\"${rsvpUrl}?gid=${GAME_ID}&email=${player}&action=out&src=admin\" "
+      outLink+='style="background-color:#f71111;border-radius:5px;color:#ffffff;display:inline-block;'
+      outLink+='font-family:sans-serif;font-size:13px;font-weight:bold;line-height:20px;text-align:center;'
+      outLink+='text-decoration:none;width:40px;-webkit-text-size-adjust:none;">out</a>'
+      outLink+='<!--[if mso]></center></v:roundrect><![endif]--></span>'
+
+      #outLink="${rsvpUrl}?email=${player}&amp;action=out&src=admin"
+      printf "<td>%s</td>" "$inLink"  
+      printf "<td>%s</td>" "$outLink"
+    fi
+
+    if [ `isSpare $player` -eq 1 ] ; then
+      printf "<td width=\"30\" class=\"small\">(spare)</td>"
+    fi
+    printf "</tr>"
+  fi
+done
+cat << WAITINGFOOTER
+</table>
+<br>
+<br>
+WAITINGFOOTER
+#fi
+}
+
+# -----------------------------------------------------------------------------
+# Generate a text version of the current goalie status
+#
+# Inputs:
+#
+#  $1 == [all|noResp] what goalies to include
+#  $2 == [noLinks|manage] include the management links to allow admin to update
+#        the goalies status
+#
+function printGoalieStatusTxt () {
+  confirmed=`getConfirmedGoalieCount`
+
+  if [ $1 == "all" ] ; then
+
+cat << EOE
+Confirmed($confirmed):
+
+EOE
+
+# - - - - - - - - - - - - - - - - - - - - - - - 
+# Write out the list of goalies
+for player in `grep -i "~[r|s]~[g]$" ${IN_FILE} | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $2}}'` ; do
+  printf "\t%-20s" "`getFullName $player`" 
+  if [ `isSpare $player` -eq 1 ] ; then
+    printf "(spare)"
+  fi
+  printf "\n"
+done
+printf "\n"
+fi
+
+# - - - - - - - - - - - - - - - - - - - - - - - 
+# Write out the list of goalies who are not coming
+if [ $1 == "all" ] ; then
+cat << EOW
+
+Not coming:
+
+EOW
+for player in `grep -i "~[r|s]~[g]$" ${OUT_FILE} | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $2}}'` ; do
+  printf "\t%-20s" "`getFullName $player`" 
+  if [ `isSpare $player` -eq 1 ] ; then
+    printf "(spare)"
+  fi
+  printf "\n"
+done
+printf "\n"
+fi
+
+# - - - - - - - - - - - - - - - - - - - - - - - 
+# Write out the list of regulars who have not yet responded
+
+cat << EOB
+
+Still waitingx to hear from:
+
+EOB
+
+goalieList=`grep -i "~[r|s]~[g]~[u|c]~[e|a]$" ${ROSTER} | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`
+for player in $goalieList ; do 
+  if [ `hasResponded $player` -eq 0 ] ; then 
+    printf "\t%-20s" "`getFullName $player`" 
+
+    if [ $2 == "manage" ] ; then
+      printf "[+]<${leagueUrl}/rsvp.cgi?email=${player}&action=in&src=admin>"
+      printf " [-]<${leagueUrl}/rsvp.cgi?email=${player}&action=out&src=admin>"
+    fi
+
+    if [ `isSpare $player` -eq 1 ] ; then
+      printf " (spare)"
+    fi
+    printf "\n"
+  fi
+done
+}
+
+# -----------------------------------------------------------------------------
+# print the email to send to the administrator when the practice is full
+function printGotItPage () {
+  gotItFile="${DATA_DIR}/registration.log"
+  regs=`grep -c -i "~[r]~[s|g]~[u|c]~[e|a]$" ${ROSTER}`
+  regsConfirmed=`grep -c -i "~[r]~[s|g]$" $gotItFile`
+  spares=`grep -c -i "~[s]~[s|g]~[u|c]~[e|a]$" ${ROSTER}`
+  sparesConfirmed=`grep -c -i "~[s]~[s|g]$" $gotItFile`
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of regulars who have not yet responded
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+cat << EOB
+<h2>Confirmations:</h2>
+<h4>Regulars: ($regsConfirmed/$regs confirmed)</h4>
+<table cellpadding="2" cellspacing="0" border="0">
+EOB
+for player in `grep -i "~[r]~[s|g]~[u|c]~[e|a]$" ${ROSTER} | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'` ; do
+  printf "<tr><td width=\"10\"></td>"
+  if [ `grep -c $player $gotItFile` -eq 1 ] ; then
+    icon="icon-ok"
+    color="green"
+  else
+    icon="icon-minus-sign"
+    color="red"
+  fi
+  printf "<td><i class=\"$icon\" style=\"color:$color;\"></i> %s</td>" "`getFullName $player`"     
+  printf "</tr>"
+
+done
+cat << EOW
+</table>
+EOW
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# print the list of spares
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+cat << EOS
+    <br>
+    <h4>Spares: ($sparesConfirmed/$spares confirmed)</h4>
+    <table cellpadding="2" cellspacing="0" border="0">
+EOS
+  for player in `grep -i "~[s]~[s|g]~[u|c]~[e|a]$" ${ROSTER} | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'`; do 
+  printf "<tr><td width=\"10\"></td>"
+  if [ `grep -c $player $gotItFile` -eq 1 ] ; then
+    icon="icon-ok"
+    color="green"
+  else
+    icon="icon-minus-sign"
+    color="red"
+  fi
+  printf "<td><i class=\"$icon\" style=\"color:$color;\"></i> %s</td>" "`getFullName $player`"     
+  printf "</tr>"
+
+  done
+cat << EOX
+  </table>
+EOX
+}
+
+
+# -----------------------------------------------------------------------------
+# Send the GotIt email
+function sendGotItEmail () {
+  #printWelcomeEmail $1 | /usr/lib/sendmail $1
+  #printWelcomeEmailSquare $1 | /usr/lib/sendmail $1
+  printNewGotItEmail $1 |  /usr/lib/sendmail $1
+}
+
+# -----------------------------------------------------------------------------
+# Send the welcome email to everyone
+# $1 = email address
+function welcomeRegular () {
+   #printWelcomeRegulars $1 | /usr/lib/sendmail $1
+   printWelcomeRegulars2 $1 | /usr/lib/sendmail $1
+}
+
+# -----------------------------------------------------------------------------
+# Send the welcome email to everyone
+# $1 = email address
+function welcomeSpare () {
+   #printWelcomeSpares $1 | /usr/lib/sendmail $1
+   printWelcomeSpares2 $1 | /usr/lib/sendmail $1
+}
+
+
+# ----------------------------------------------------------------------------
+# Send and email via the GMAIL SMTP interface
+#
+#   $1 == recipient
+#   $2 == subject
+#   $3 == html version of the email
+#   $4 == text version of the email
+#
+function sendmailViaGmail () {
+
+  # If the league config says to override the "Reply-to" header
+  # we'll do that, otherwise reply to will be the league Gmail account
+  if [ "${replyToOrganizer}" == "true" ] ; then
+    ${SMPT_LIB_DIR}/smtp-cli-3.6 --missing-modules-ok \
+       --host=${EmailAccountHost} -enable-auth \
+       --user ${EmailAccountAddress} --pass ${EmailAccountPass} \
+       --to ${1} --subject "${2}" \
+       --from "${EmailAccountName} <${EmailAccountAddress}>"  \
+       --reply-to "<${OrganizerEmail}>" \
+       --body-html ${3} --body-plain ${4}
+  else
+    ${SMPT_LIB_DIR}/smtp-cli-3.6 --missing-modules-ok \
+       --host=${EmailAccountHost} -enable-auth \
+       --user ${EmailAccountAddress} --pass ${EmailAccountPass} \
+       --to ${1} --subject "${2}" \
+       --from "${EmailAccountName} <${EmailAccountAddress}>"  \
+       --body-html ${3} --body-plain ${4}
+  fi
+
+  # delete the temporary email files
+  #rm ${3} ${4}
+}
+
+
+# ----------------------------------------------------------------------------
+# Send the No Game emails via Gmail smtp API
+# This function builds an html and text version of the email based on a
+# template.
+#
+# $1 == gameId
+#
+function sendNoGameEmails () {
+  #IFS='~' read -r GAME_ID GAME_TIMESTAMP GAME_DAY GAME_START GAME_LOCATION GAME_END GAME_ACTIVE < <(grep "$2" ${SCHEDULE})
+
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b %_d")
+
+  subject="No Game ${gameDate} !"
+  
+  # Lines that begin with "#" denote people that are temporarily off
+  # the list (ie. vacation/injury)
+  recipients=`shuf ${ROSTER} | awk -F~ '{if($1 !~ /^#/ && $4 ~ /r/ ){print $1}}'`
+
+  # we use idx as a counter to help us throttle our email requests
+  # in an attempt to avoid being denied service
+  EMAIL_BATCH_SIZE=5
+  EMAIL_BATCH_SEPARATOR=10
+  idx=0
+  for email in ${recipients} ; do
+    htmlEmail="${MAIL_DIR}/${email}-noGame.html"
+    txtEmail="${MAIL_DIR}/${email}-noGame.txt"
+
+    cp ${MAIL_TEMPLATE_DIR}/noGame.html ${htmlEmail}
+    cp ${MAIL_TEMPLATE_DIR}/noGame.txt ${txtEmail}
+    chmod 777 ${htmlEmail}  ${txtEmail}
+
+    playerName=`getFirstName "$email"`
+    
+    # gameId gameTimestamp gameDay gameStart location endTime active
+    sed -i -e "s|PLAYER_NAME|${playerName}|g" \
+           -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+           -e "s|GAME_DAY|${gameDate}|g" \
+           -e "s|GAME_START|${GAME_START}|g" \
+           -e "s|GAME_LOCATION|${GAME_LOCATION}|g" \
+           ${htmlEmail} ${txtEmail}
+    sendmailViaGmail ${email} "${subject}" ${htmlEmail} ${txtEmail} &
+
+    # Throttle email sending to avoid blocking by Gmail servers
+    if [ $((++idx % ${EMAIL_BATCH_SIZE})) -eq 0 ] ; then
+      sleep ${EMAIL_BATCH_SEPARATOR}
+    fi
+  done
+}
+
+
+
+# ----------------------------------------------------------------------------
+# Send the Confirmation emails via Gmail smtp API
+# This function builds an html and text version of the email based on a
+# template.
+#
+# $1 == gameId
+#
+function sendConfirmationEmails () {
+  #IFS='~' read -r GAME_ID GAME_TIMESTAMP GAME_DAY GAME_START GAME_LOCATION GAME_END GAME_ACTIVE < <(grep "$2" ${SCHEDULE})
+
+  #echo "sendConfirmationEmails: GAME_ID: $GAME_ID $GAME_DAY $GAME_START $GAME_LOCATION $GAME_END $GAME_ACTIVE"
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b %_d")
+
+  subject="${LeagueType} ${gameDate} (${GAME_START} - ${GAME_END})"
+  
+  # Lines that begin with "#" denote people that are temporarily off
+  # the list (ie. vacation/injury)
+  recipients=`shuf ${ROSTER} | awk -F~ '{if($1 !~ /^#/ && $4 ~ /r/ ){print $1}}'`
+
+  # For leagues with the Beer Tracker enabled, confirmation email time is the
+  # time to check to see if we need to start a new cycle (meaning every regular
+  # has provided beer).  At this point we wipe the BEER_TRACKER file and
+  # start a new round of beer volunteering.
+  if [[ "${beerTracker}" == "yes" ]] ; then
+    # filter-sort the ROSTER and sort BEER_TRACKER entires, then sort those, and get a count
+    # of the unique entires.  This will be the detla between the Beer Roster and the people who
+    # have already brought beer.  When this count == 0, its time to start a new round.
+    candidatesRemaining=$(sort <(grep ".*~a$" ${ROSTER} | sort | cut -d'~' -f1) \
+                               <(cut -d" " -f1 ${BEER_TRACKER} | sort ) | uniq -u | wc -l)
+    if [ ${candidatesRemaining} -eq 0 ] ; then
+      # reset the beerTracker, its time for a new round
+      > ${BEER_TRACKER}
+    fi
+    #local beerBringers=($(awk '{printf "%s ",$1}' ${BEER_TRACKER}))
+  fi
+  
+  # we use idx as a counter to help us throttle our email requests
+  # in an attempt to avoid being denied service
+  EMAIL_BATCH_SIZE=5
+  EMAIL_BATCH_SEPARATOR=10
+  idx=0
+  for email in ${recipients} ; do
+    htmlEmail="${MAIL_DIR}/${email}-confirm.html"
+    txtEmail="${MAIL_DIR}/${email}-confirm.txt"
+
+    # We only send the Beer Button emails to leagues that have the feature enabled
+    if [[ "${beerTracker}" == "yes" ]] ; then
+      #local regulars=($(grep ".*~r~s~[c|u]~[e|a]$" ${ROSTER} | sort | awk -F'~' '{printf "%s ",$1}'))
+      local beerGuys=($(awk '{printf "%s ",$1}' ${BEER_TRACKER}))
+      if [ $(containsElement $email "${beerGuys[@]}") == 1 ] ; then
+        # We only send the BeerButton email if the regular hasn't already brought beer this cycle
+        cp ${MAIL_TEMPLATE_DIR}/confirmation-bb.html ${htmlEmail}
+        cp ${MAIL_TEMPLATE_DIR}/confirmation-bb.txt ${txtEmail}        
+      else
+        cp ${MAIL_TEMPLATE_DIR}/confirmation.html ${htmlEmail}
+        cp ${MAIL_TEMPLATE_DIR}/confirmation.txt ${txtEmail}      
+      fi
+    else
+      cp ${MAIL_TEMPLATE_DIR}/confirmation.html ${htmlEmail}
+      cp ${MAIL_TEMPLATE_DIR}/confirmation.txt ${txtEmail}
+    fi
+    
+    playerName=`getFirstName "$email"`
+
+    if [[ ${scoreTracker} == "yes" ]] ; then
+      versus=" vs $OPPONENT"
+    fi
+    
+    sed -i -e "s|PLAYER_NAME|${playerName}|g" \
+           -e "s|PLAYER_EMAIL|${email}|g" \
+           -e "s|URL_BASE|${leagueUrl}|g" \
+           -e "s|GAME_ID|${GAME_ID}|g" \
+           -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+           -e "s|GAME_DAY|${gameDate}|g" \
+           -e "s~GAME_TIME~${GAME_START/ [A|P]M/} - ${GAME_END}~g" \
+           -e "s|GAME_LOCATION|${GAME_LOCATION}${versus}|g" \
+           ${htmlEmail} ${txtEmail}
+    sendmailViaGmail ${email} "${subject}" ${htmlEmail} ${txtEmail} &
+
+    # Throttle email sending to avoid blocking by Gmail servers
+    if [ $((++idx % ${EMAIL_BATCH_SIZE})) -eq 0 ] ; then
+      sleep ${EMAIL_BATCH_SEPARATOR}
+    fi
+  done
+}
+
+# ----------------------------------------------------------------------------
+# Send the Confirmation emails via Gmail smtp API
+# This function builds an html and text version of the email based on a
+# template.
+#
+function sendReminderEmails () {
+
+  #IFS='~' read -r gameId gameTimestamp gameDay gameStart location endTime active < <(grep "$1" ${SCHEDULE})
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b %_d")
+  subject="Reminder: ${LeagueType} ${gameDate} (${GAME_START} - ${GAME_END})"
+
+  grep "~[r]~[s|g]~[c|u]~[e|a]$" ${ROSTER} | sort -t~ -k1 | awk -F~ '{print $1}' > ${DATA_DIR}/reg_remind_ros
+  sort -t~ -k2 ${IN_FILE} ${OUT_FILE} | grep "~[r]~[s|g]$" | awk -F~ '{print $2}' > ${DATA_DIR}/reg_remind_resp
+
+  recipients=`comm -23 ${DATA_DIR}/reg_remind_ros ${DATA_DIR}/reg_remind_resp`
+
+  # we use idx as a counter to help us throttle our email requests
+  # in an attempt to avoid being denied service
+  EMAIL_BATCH_SIZE=5
+  EMAIL_BATCH_SEPARATOR=10
+  idx=0
+  for email in ${recipients} ; do
+    htmlEmail="${MAIL_DIR}/${email}-reminder.html"
+    txtEmail="${MAIL_DIR}/${email}-reminder.txt"
+
+    cp ${MAIL_TEMPLATE_DIR}/regularReminder.html ${htmlEmail}
+    cp ${MAIL_TEMPLATE_DIR}/regularReminder.txt ${txtEmail}
+
+    playerName=`getFirstName "$email"`
+
+    if [[ ${scoreTracker} == "yes" ]] ; then
+      versus=" vs $OPPONENT"
+    fi
+    
+    sed -i -e "s|PLAYER_NAME|${playerName}|g" \
+           -e "s|PLAYER_EMAIL|${email}|g" \
+           -e "s|URL_BASE|${leagueUrl}|g" \
+           -e "s|GAME_ID|${GAME_ID}|g" \
+           -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+           -e "s|GAME_DAY|${gameDate}|g" \
+           -e "s~GAME_TIME~${GAME_START/ [A|P]M/} - ${GAME_END}~g" \
+           -e "s|GAME_LOCATION|${GAME_LOCATION}${versus}|g" \
+           ${htmlEmail} ${txtEmail}
+    sendmailViaGmail ${email} "${subject}" ${htmlEmail} ${txtEmail} &
+
+    # Throttle email sending to avoid blocking by Gmail servers
+    if [ $((++idx % ${EMAIL_BATCH_SIZE})) -eq 0 ] ; then
+      sleep ${EMAIL_BATCH_SEPARATOR}
+    fi
+  done
+}
+
+
+# ----------------------------------------------------------------------------
+# Send the Invitation emails via Gmail smtp API
+# This function builds an html and text version of the email based on a
+# template.
+#
+function sendInvitationEmails () {
+  spotsTaken=`grep -c -i "~[r|s]~s$" ${IN_FILE}`
+
+  #IFS='~' read -r gameId gameTimestamp gameDay gameStart location endTime active < <(grep "$1" ${SCHEDULE})
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b %_d")
+  spots=$(($maxSkaters-$spotsTaken))
+  #gameID=$1
+
+  if [ $spots -gt 0 ] ; then
+    subject="${LeagueType} ${gameDate} (${GAME_START} - ${GAME_END})"
+
+    keeper=`sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~r~g$"`
+    skaters=`sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~[r|s]~[s]$"`
+ 
+    # Lines that begin with "#" denote people that are temporarily off
+    # the list (ie. vacation/injury)
+    # We shuffle the roster to ensure that invite ordering is not biased
+    # week over week.
+    recipients=`shuf ${ROSTER} | awk -F~ '{if($1 !~ /^#/ && $4 ~ /s/ && $5 ~ /s/ ){print $1}}'`
+ 
+    # we use idx as a counter to help us throttle our email requests
+    # in an attempt to avoid being denied service
+    EMAIL_BATCH_SIZE=5
+    EMAIL_BATCH_SEPARATOR=10
+    idx=0
+    for email in ${recipients} ; do
+      htmlEmail="${MAIL_DIR}/${email}-invite.html"
+      txtEmail="${MAIL_DIR}/${email}-invite.txt"
+      chmod 777 ${htmlEmail} ${txtEmail}
+      
+      if [ $spots -eq 0 ] ; then 
+        cp ${MAIL_TEMPLATE_DIR}/rosterFull.html ${htmlEmail}
+        cp ${MAIL_TEMPLATE_DIR}/rosterFull.txt ${txtEmail}
+      else
+        cp ${MAIL_TEMPLATE_DIR}/invite.html ${htmlEmail}
+        cp ${MAIL_TEMPLATE_DIR}/invite.txt ${txtEmail}
+      fi
+
+      playerName=`getFirstName "$email"`
+
+      if [[ ${scoreTracker} == "yes" ]] ; then
+        versus=" vs $OPPONENT"
+      fi
+
+      sed -i -e "s|PLAYER_NAME|${playerName}|g" \
+             -e "s|PLAYER_EMAIL|${email}|g" \
+             -e "s|GAME_ID|${GAME_ID}|g" \
+             -e "s|URL_BASE|${leagueUrl}|g" \
+             -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+             -e "s|SPOTS|${spots}|g" \
+             -e "s|GAME_DAY|${gameDate}|g" \
+             -e "s~GAME_TIME~${GAME_START/ [A|P]M/} - ${GAME_END}~g" \
+             -e "s|GAME_LOCATION|${GAME_LOCATION}${versus}|g" \
+             ${htmlEmail} ${txtEmail}
+      sendmailViaGmail ${email} "${subject}" ${htmlEmail} ${txtEmail} &
+
+      # Throttle email sending to avoid blocking by Gmail servers
+      if [ $((++idx % ${EMAIL_BATCH_SIZE})) -eq 0 ] ; then
+       sleep ${EMAIL_BATCH_SEPARATOR}
+      fi
+    done
+    
+  fi
+}
+
+
+# ----------------------------------------------------------------------------
+# Send the Invitation Reminder emails via Gmail smtp API
+# This function builds an html and text version of the email based on a
+# template.
+#
+function sendInvitationReminderEmails () {
+  spotsTaken=`grep -c -i "~[r|s]~s$" ${IN_FILE}`
+
+  #IFS='~' read -r gameId gameTimestamp gameDay gameStart location endTime active < <(grep "$1" ${SCHEDULE})
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b %_d")
+  spots=$(($maxSkaters-$spotsTaken))
+  #gameID=$1
+
+  if [ $spots -gt 0 ] ; then
+    subject="${LeagueType} ${gameDate} (${GAME_START} - ${GAME_END})"
+
+    keeper=`sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~r~g$"`
+    skaters=`sort -u -t"~" -k1 ${IN_FILE} |grep -c -i "^[A-z].*~[r|s]~[s]$"`
+
+
+    touch ${DATA_DIR}/spares_remind_ros ${DATA_DIR}/spares_remind_resp
+    chmod 777 ${DATA_DIR}/spares_remind_ros ${DATA_DIR}/spares_remind_resp
+    grep "~[s]~[s]~[c|u]~[e|a]$" ${ROSTER} | sort -t~ -k1 | awk -F~ '{print $1}' > ${DATA_DIR}/spares_remind_ros
+    sort -t~ -k2 ${IN_FILE} ${OUT_FILE} | grep "~[s]~[s]$" | awk -F~ '{print $2}' > ${DATA_DIR}/spares_remind_resp
+
+    recipients=`comm -23 ${DATA_DIR}/spares_remind_ros ${DATA_DIR}/spares_remind_resp`
+    
+    # we use idx as a counter to help us throttle our email requests
+    # in an attempt to avoid being denied service
+    EMAIL_BATCH_SIZE=5
+    EMAIL_BATCH_SEPARATOR=10
+    idx=0
+    for email in ${recipients} ; do
+      htmlEmail="${MAIL_DIR}/${email}-inviteReminder.html"
+      txtEmail="${MAIL_DIR}/${email}-inviteReminder.txt"
+      chmod 777 ${htmlEmail} ${txtEmail}
+      if [ $spots -eq 0 ] ; then 
+        cp ${MAIL_TEMPLATE_DIR}/rosterFull.html ${htmlEmail}
+        cp ${MAIL_TEMPLATE_DIR}/rosterFull.txt ${txtEmail}
+      else
+        cp ${MAIL_TEMPLATE_DIR}/inviteReminder.html ${htmlEmail}
+        cp ${MAIL_TEMPLATE_DIR}/inviteReminder.txt ${txtEmail}
+      fi
+
+      playerName=`getFirstName "$email"`
+
+      if [[ ${scoreTracker} == "yes" ]] ; then
+        versus=" vs $OPPONENT"
+      fi
+      
+      sed -i -e "s|PLAYER_NAME|${playerName}|g" \
+             -e "s|PLAYER_EMAIL|${email}|g" \
+             -e "s|GAME_ID|${GAME_ID}|g" \
+             -e "s|URL_BASE|${leagueUrl}|g" \
+             -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+             -e "s|SPOTS|${spots}|g" \
+             -e "s|GAME_DAY|${gameDate}|g" \
+             -e "s~GAME_TIME~${GAME_START/ [A|P]M/} - ${GAME_END}~g" \
+             -e "s|GAME_LOCATION|${GAME_LOCATION}${versus}|g" \
+             ${htmlEmail} ${txtEmail}
+      sendmailViaGmail ${email} "${subject}" ${htmlEmail} ${txtEmail} &
+
+      # Throttle email sending to avoid blocking by Gmail servers
+      if [ $((++idx % ${EMAIL_BATCH_SIZE})) -eq 0 ] ; then
+       sleep ${EMAIL_BATCH_SEPARATOR}
+      fi
+    done
+    
+  fi
+}
+
+# -----------------------------------------------------------------------------
+# The roster *was* full, but someone backed out, so send an invite to the first
+# person on the Day-mmm-dd-full file
+#
+function sendSpotOpenedEmail () {
+  spareGoalieName=`getFullName "$1"`
+  firstDeniedPlayer=`head -n1 ${FULL_FILE} | awk -F~ '{print $1}' | awk '{print $1}'`
+
+  # TODO: remove the first person in the full file when they respond
+  #sed -i "1d" ${FULL_FILE}
+  
+}
+
+# ----------------------------------------------------------------------------
+# Send a follow-up email to all spare goalies that have not yet responded
+# indicating the the spot has been filled.
+# $1 == email address of regular goalie that was replaced
+#
+function sendSpotFilledEmails () {
+  #IFS='~' read -r gameId gameTimestamp gameDay gameStart location endTime active < <(grep "$1" ${SCHEDULE})
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b%_d")
+  subject="Re: Goalie Needed (${gameDate})"
+  regularGoalie=$1
+
+  # only send request emails to spare goalies that have not yet responded
+  # push all of the spare goalies from the ROSTER into sir
+  grep "~s~g~[c|u]$" ${ROSTER} | sort -t~ -k1 | awk -F~ '{print $1}' > ${DATA_DIR}/sir
+  chmod 777 ${DATA_DIR}/sir
+  # get all of the goalies that have responded
+  sort -t~ -k2 ${IN_FILE} ${OUT_FILE} | grep "~[s]~g$" | awk -F~ '{print $2}' > ${DATA_DIR}/sgresp
+  chmod 777 ${DATA_DIR}/sgresp
+  
+  spares=`comm -23 ${DATA_DIR}/sir ${DATA_DIR}/sgresp`
+
+  #spares=`comm -23 <(grep "~[s]~g$" ${ROSTER} | sort -t~ -k1 | awk -F~ '{print $1}')\
+  #                 <(sort -t~ -k2 ${IN_FILE} ${OUT_FILE} | grep "~[s]~g$" \
+  #                   | awk -F~ '{print $2}')`
+    
+
+  for email in $spares ; do
+    emailDate=`stat --format=%y ${MAIL_DIR}/${email}-goalieInvite.html`
+    originalEmail=`date -d"$emailDate" +"On %a, %b %d, %I:%M %p,"`
+
+    htmlEmail="${MAIL_DIR}/${email}-goalieSpotFilled.html"
+    txtEmail="${MAIL_DIR}/${email}-goalieSpotFilled.txt"
+
+    cp ${MAIL_TEMPLATE_DIR}/adminGoalieSpotFilled.html ${htmlEmail}
+    cp ${MAIL_TEMPLATE_DIR}/adminGoalieSpotFilled.txt ${txtEmail}
+    chmod -f 777 ${htmlEmail} ${txtEmail}
+
+    if [[ ${scoreTracker} == "yes" ]] ; then
+      versus=" vs $OPPONENT"
+    fi
+    
+    playerName=`getFirstName "$email"`
+    regularGoalieName=`getFirstName $regularGoalie`
+    sed -i -e "s|PLAYER_NAME|${playerName}|g" \
+           -e "s|PLAYER_EMAIL|${email}|g" \
+           -e "s|REGULAR_GOALIE|${regularGoalieName}|g" \
+           -e "s|EMAIL_DATE|${originalEmail}|g" \
+           -e "s|LEAGUE_NAME|${EmailAccountName}|g" \
+           -e "s|LEAGUE_EMAIL|${EmailAccountAddress}|g" \
+           -e "s|GAME_DAY|${gameDate}|g" \
+           -e "s~GAME_TIME~${GAME_START/ [A|P]M/} - ${GAME_END}~g" \
+           -e "s|GAME_LOCATION|${GAME_LOCATION}${versus}|g" \
+           -e "s|URL_BASE|${leagueUrl}|g" \
+           ${htmlEmail} ${txtEmail}
+
+    sendmailViaGmail ${email} "${subject}" ${htmlEmail} ${txtEmail} &
+    
+  done
+}
+
+# ----------------------------------------------------------------------------
+# Send the Invitation emails via Gmail smtp API
+# This function builds an html and text version of the email based on a
+# template.
+#  $1  == the email address of the regular goalie
+# "$2" == the (space separated) list of spares who have not yet responded
+#
+function sendSpareGoalieEmails () {
+  #IFS='~' read -r gameId gameTimestamp gameDay gameStart location endTime active < <(grep "$1" ${SCHEDULE})
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b%_d")
+  #gameDate=`getGameDate`
+  subject="Goalie Needed (${gameDate})"
+  gameID=`getGameID`
+  
+  # Lines that begin with "#" denote people that are temporarily off
+  # the list (ie. vacation/injury)
+  #recipients=`shuf ${ROSTER} | awk -F~ '{if($1 !~ /^#/ && $4 ~ /s/ && $5 ~ /g/ ){print $1}}'`
+  recipients="$2"
+  regularGoalieName=`getFirstName $1`
+
+  for email in ${recipients} ; do
+
+    # TODO: if the invite is being sent because the second regular
+    #       goalie can't make it, choose the secondGoalieInvite template
+    if [ `getRegularGoalieDeclinedCount` -eq 1 ] ; then
+      htmlEmail="${MAIL_DIR}/${email}-goalieInvite.html"
+      txtEmail="${MAIL_DIR}/${email}-goalieInvite.txt"
+      cp ${MAIL_TEMPLATE_DIR}/goalieInvite.html ${htmlEmail}
+      cp ${MAIL_TEMPLATE_DIR}/goalieInvite.txt ${txtEmail}
+    else
+      htmlEmail="${MAIL_DIR}/${email}-secondGoalieInvite.html"
+      txtEmail="${MAIL_DIR}/${email}-secondGoalieInvite.txt"
+      cp ${MAIL_TEMPLATE_DIR}/secondGoalieInvite.html ${htmlEmail}
+      cp ${MAIL_TEMPLATE_DIR}/secondGoalieInvite.txt ${txtEmail}
+    fi
+    chmod 777 ${htmlEmail} ${txtEmail}
+    
+    playerName=`getFirstName "$email"`
+
+    if [[ ${scoreTracker} == "yes" ]] ; then
+      versus=" vs $OPPONENT"
+    fi
+    
+    sed -i -e "s|PLAYER_NAME|${playerName}|g" \
+           -e "s|PLAYER_EMAIL|${email}|g" \
+           -e "s|REGULAR_GOALIE|${regularGoalieName}|g" \
+           -e "s|GAME_ID|${GAME_ID}|g" \
+           -e "s|GAME_DAY|${gameDate}|g" \
+           -e "s~GAME_TIME~${GAME_START/ [A|P]M/} - ${GAME_END}~g" \
+           -e "s|GAME_LOCATION|${GAME_LOCATION}${versus}|g" \
+           -e "s|URL_BASE|${leagueUrl}|g" \
+           ${htmlEmail} ${txtEmail}
+
+    sendmailViaGmail ${email} "${subject}" ${htmlEmail} ${txtEmail} &
+
+  done
+}
+
+# ----------------------------------------------------------------------------
+# Send the Registration emails via Gmail smtp API
+# This function builds an html and text version of the email based on a
+# template.
+#
+# $1 is the email address of the recipient
+#
+function sendRegistrationEmail () {
+  email=$1
+  subject="Welcome to the ${EmailAccountName}"
+  htmlEmail="${MAIL_DIR}/${email}-register.html"
+  txtEmail="${MAIL_DIR}/${email}-register.txt"
+
+  cp ${MAIL_TEMPLATE_DIR}/registration.html ${htmlEmail}
+  cp ${MAIL_TEMPLATE_DIR}/registration.txt ${txtEmail}
+
+  touch ${htmlEmail} ${txtEmail}
+  chmod -f 777 ${htmlEmail} ${txtEmail}
+
+  playerName=`getFirstName "${email}"`
+
+  sed -i -e "s|PLAYER_NAME|${playerName}|g" \
+         -e "s|PLAYER_EMAIL|${email}|g" \
+         -e "s|URL_BASE|${leagueUrl}|g" \
+         -e "s|EMAIL_ACCOUNT_NAME|${EmailAccountName}|g" \
+         -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+         ${htmlEmail} ${txtEmail}
+  sendmailViaGmail ${email} "${subject}" ${htmlEmail} ${txtEmail} &
+}
+
+# ----------------------------------------------------------------------------
+# Send the Registraions emails to the entire roster
+#
+function sendRosterRegistraionEmails () {
+  subject="Welcome to the ${EmailAccountName}"
+
+  # Lines that begin with "#" denote people that are temporarily off
+  # the list (ie. vacation/injury)
+
+  recipients=`awk -F~ '{if($1 !~ /^#/ && $4 ~ /s|r/){print $1}}' ${ROSTER}`
+
+  # we use idx as a counter to help us throttle our email requests
+  # in an attempt to avoid being denied service
+  EMAIL_BATCH_SIZE=5
+  EMAIL_BATCH_SEPARATOR=10
+  idx=0
+  for email in ${recipients} ; do
+
+    htmlEmail="${MAIL_DIR}/${email}-register.html"
+    txtEmail="${MAIL_DIR}/${email}-register.txt"
+
+    cp ${MAIL_TEMPLATE_DIR}/registration.html ${htmlEmail}
+    cp ${MAIL_TEMPLATE_DIR}/registration.txt ${txtEmail}
+ 
+    touch ${htmlEmail} ${txtEmail}
+    chmod -f 777 ${htmlEmail} ${txtEmail}
+
+    playerName=`getFirstName "${email}"`
+
+    sed -i -e "s|PLAYER_NAME|${playerName}|g" \
+           -e "s|PLAYER_EMAIL|${email}|g" \
+           -e "s|URL_BASE|${leagueUrl}|g" \
+           -e "s|EMAIL_ACCOUNT_NAME|${EmailAccountName}|g" \
+           -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+           ${htmlEmail} ${txtEmail}
+    sendmailViaGmail ${email} "${subject}" ${htmlEmail} ${txtEmail} &
+
+    # Throttle email sending to avoid blocking by Gmail servers
+    if [ $((++idx % ${EMAIL_BATCH_SIZE})) -eq 0 ] ; then
+      sleep ${EMAIL_BATCH_SEPARATOR}
+    fi
+  done
+}
+
+
+# ----------------------------------------------------------------------------
+# Send an attendance summary email to the organizer via GMail smtp API
+#
+function sendAttendanceEmail () {
+  spotsTaken=`grep -c -i "~[r|s]$" ${IN_FILE}`
+  #IFS='~' read -r gameId gameTimestamp gameDay gameStart location endTime active < <(grep "$1" ${SCHEDULE})
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b%_d")
+  #gameDate=`getGameDate`
+
+  subject="Attendance: (${gameDate})"
+  htmlEmail="${MAIL_DIR}/attendance.html"
+  txtEmail="${MAIL_DIR}/attendance.txt"
+  touch $htmlEmail $txtEmail
+  chmod -f 777 $htmlEmail $txtEmail
+
+  echo '<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-1">' > $htmlEmail
+  printPublicAttendancePage >> $htmlEmail  
+
+  printPublicAttendancePage_txt > $txtEmail
+
+  sendmailViaGmail ${OrganizerEmail} "${subject}" ${htmlEmail} ${txtEmail} &
+}
+
+
+# ----------------------------------------------------------------------------
+# Send an attendance summary email to the organizer via GMail smtp API
+# $1 == goalie's email address
+#
+function adminSendNeedAGoalieEmail () {
+  #IFS='~' read -r gameId gameTimestamp gameDay gameStart location endTime active < <(grep "$1" ${SCHEDULE})
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b%_d")
+  #gameDate=`getGameDate`
+  subject="Need a Goalie"
+
+  # By default we'll send a simple notification to the League Organizer
+  htmlEmail="${MAIL_DIR}/adminNeedAGoalie.html"
+  txtEmail="${MAIL_DIR}/adminNeedAGoalie.txt"
+
+  cp ${MAIL_TEMPLATE_DIR}/adminNeedAGoalie.html $htmlEmail
+  cp ${MAIL_TEMPLATE_DIR}/adminNeedAGoalie.txt $txtEmail
+  chmod -f 777 $htmlEmail $txtEmail
+  
+  # If the League acutally has spares, we'll send an email with a link so the
+  # Organizer can send the "goalie needed" emails
+  if [ `getSpareGoalieCount` -gt 0 ] ; then
+  
+    if [ "${manageGoalies}" == "true" ] ; then
+      # only send request emails to spare goalies that have not yet responded
+      grep "~[s]~g~[c|u]~[e|a]$" ${ROSTER} | sort -t~ -k1 | awk -F~ '{print $1}' > ${DATA_DIR}/sir
+      chmod 777 ${DATA_DIR}/sir
+      sort -t~ -k2 ${IN_FILE} ${OUT_FILE} | grep "~[s]~g$" | awk -F~ '{print $2}' > ${DATA_DIR}/sgresp
+      chmod 777 ${DATA_DIR}/sgresp
+
+      #spares=$(comm -23 <(grep "~[s]~g$" ${ROSTER} | sort -t~ -k1 \
+      #                   | awk -F~ '{print $1}')\
+      #                 <(sort -t~ -k2 ${IN_FILE} ${OUT_FILE} | grep "~[s]~g$" \
+      #                   | awk -F~ '{print $2}'))
+
+      spares=`comm -23 ${DATA_DIR}/sir ${DATA_DIR}/sgresp`
+
+      # Sent the invite to all spare goalies.  Emails will only be sent
+      # if they have not already been sent
+      sendSpareGoalieEmails $1 "$spares" &
+    fi
+
+    # Now send the notification email to the Administrator
+    if [ "${goalieNotify}" == "true" ] ; then
+
+      if [ "${manageGoalies}" == "true" ] ; then
+        # Now send the notification email to the League Organizer
+        cp ${MAIL_TEMPLATE_DIR}/adminSpareGoaliesContacted.html $htmlEmail
+        cp ${MAIL_TEMPLATE_DIR}/adminSpareGoaliesContacted.txt $txtEmail
+     
+        spareKeeperListHtml="<ul>"
+        for spare in $spares ; do
+          spareKeeperListHtml+=$(awk -F~ -vsp=$spare '$0 ~ sp\
+                                {printf "<li>%s %s (%s)</li>",$2, $3, $1}' ${ROSTER})
+          textList+=$(awk -F~ -vsp=$spare '$0 ~ sp\
+                     {printf "%s %s (%s)~",$2,$3,$1}' ${ROSTER})
+        done
+        spareKeeperListHtml+="</ul>"
+        spareKeeperListTxt=`echo $textList | sed 's|~|\\\n|g'`
+
+        sed -i -e "s|SPARE_KEEPER_LIST|${spareKeeperListHtml}|g" ${htmlEmail}
+        sed -i -e "s/SPARE_KEEPER_LIST/${spareKeeperListTxt}/g" ${txtEmail}
+      else
+        echo "${manageGoalies} != true" >> /tmp/goalieManagement
+        cp ${MAIL_TEMPLATE_DIR}/adminNeedAGoalieWithLink.html $htmlEmail
+        cp ${MAIL_TEMPLATE_DIR}/adminNeedAGoalieWithLink.txt $txtEmail
+
+        printGoalieStatusHtml all manage >> $htmlEmail
+        printGoalieStatusTxt all manage >> $txtEmail      
+      fi
+    fi # if [ "${goalieNotify}" == "true" ] 
+  else
+    # There are no spare goalies !
+    cp ${MAIL_TEMPLATE_DIR}/adminNeedAGoalie.html $htmlEmail
+    cp ${MAIL_TEMPLATE_DIR}/adminNeedAGoalie.txt $txtEmail
+    printGoalieStatusHtml all noLinks >> $htmlEmail
+    printGoalieStatusTxt all noLinks >> $txtEmail      
+  fi
+
+  # Only send the Admin email if selected.
+  if [ "${goalieNotify}" == "true" ] ; then
+    echo "sending notification" >> /tmp/goalieManagement
+    keeperName=`getFullName "$1"`
+    sed -i -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+           -e "s|KEEPER_NAME|${keeperName}|g" \
+           -e "s|DATE|${gameDate}|g" \
+           -e "s|GAME_ID|${GAME_ID}|g" \
+           -e "s|SPARE_KEEPER_LIST|${spareKeeperListHtml}|g" \
+           -e "s|URL_BASE|${leagueUrl}|g" \
+           -e "s|ADMIN_TOKEN|${AdminToken}|g" \
+           -e "s|REGULAR_GOALIE_EMAIL|$1|g" \
+           ${htmlEmail} ${txtEmail}
+
+    sendmailViaGmail ${OrganizerEmail} "${subject}" ${htmlEmail} ${txtEmail} &
+  fi
+}
+
+
+# ----------------------------------------------------------------------------
+# Send an email to the ORGANIZER indicating that a Regular Goalie hasn't 
+# responded
+#
+function adminSendNoResponseGoalieEmail () {
+  #IFS='~' read -r gameId gameTimestamp gameDay gameStart location endTime active < <(grep "$1" ${SCHEDULE})
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b %_d")
+  #gameDate=`getGameDate`
+  subject="No Response: Regular Goalie"
+
+  # By default we'll send a simple notification to the League Organizer
+  htmlEmail="${MAIL_DIR}/adminNoGoalieResponse.html"
+  txtEmail="${MAIL_DIR}/adminNoGoalieResponse.txt"
+
+  cp ${MAIL_TEMPLATE_DIR}/adminNoGoalieResponse.html $htmlEmail
+  cp ${MAIL_TEMPLATE_DIR}/adminNoGoalieResponse.txt $txtEmail
+
+  touch $htmlEmail $txtEmail
+  chmod -f 777 $htmlEmail $txtEmail
+  
+  spareGoalieName=`getFullName "$1"`
+  sed -i -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+         -e "s|DATE|${gameDate}|g" \
+         ${htmlEmail} ${txtEmail}
+  printGoalieStatusHtml noResp manage >> ${htmlEmail}
+  printGoalieStatusTxt noResp manage >> ${txtEmail}
+
+  sendmailViaGmail ${OrganizerEmail} "${subject}" ${htmlEmail} ${txtEmail} &
+}
+
+
+# ----------------------------------------------------------------------------
+# Send an attendance summary email to the organizer via GMail smtp API
+# $1 == goalie's email address
+#
+function adminSendSpareGoalieCantComeEmail () {
+  #IFS='~' read -r gameId gameTimestamp gameDay gameStart location endTime active < <(grep "$1" ${SCHEDULE})
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b%_d")
+  #gameDate=`getGameDate`
+  subject="Spare Goalie Can't come"
+
+  # By default we'll send a simple notification to the League Organizer
+  htmlEmail="${MAIL_DIR}/adminSpareGoalieCantCome.html"
+  txtEmail="${MAIL_DIR}/adminSpareGoalieCantCome.txt"
+
+  cp ${MAIL_TEMPLATE_DIR}/adminSpareGoalieCantCome.html $htmlEmail
+  cp ${MAIL_TEMPLATE_DIR}/adminSpareGoalieCantCome.txt $txtEmail
+
+  touch $htmlEmail $txtEmail
+  chmod -f 777 $htmlEmail $txtEmail
+
+  spareGoalieName=`getFullName "$1"`
+  sed -i -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+         -e "s|SPARE_GOALIE|${spareGoalieName}|g" \
+         -e "s|DATE|${gameDate}|g" \
+         ${htmlEmail} ${txtEmail}
+  printGoalieStatusHtml all noLinks >> ${htmlEmail}
+  printGoalieStatusTxt all noLinks >> ${txtEmail}
+
+  sendmailViaGmail ${OrganizerEmail} "${subject}" ${htmlEmail} ${txtEmail} &
+}
+
+# ----------------------------------------------------------------------------
+# Send an email to the League Organizer telling him that he is still short
+# a keeper for this week after all goalies have responded
+# $1 == goalie's email address
+#
+function adminSendNoSpareGoaliesEmail () {
+  #IFS='~' read -r gameId gameTimestamp gameDay gameStart location endTime active < <(grep "$1" ${SCHEDULE})
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b%_d")
+  #gameDate=`getGameDate`
+  subject="Goalie Shortage ($gameDate)"
+
+  # By default we'll send a simple notification to the League Organizer
+  htmlEmail="${MAIL_DIR}/adminNoSpareGoalie.html"
+  txtEmail="${MAIL_DIR}/adminNoSpareGoalie.txt"
+
+  cp ${MAIL_TEMPLATE_DIR}/adminNoSpareGoalie.html $htmlEmail
+  cp ${MAIL_TEMPLATE_DIR}/adminNoSpareGoalie.txt $txtEmail
+
+  touch $htmlEmail $txtEmail
+  chmod -f 777 $htmlEmail $txtEmail
+
+  goalieCount=`getConfirmedGoalieCount`
+  goalieCount=`expr 2 - $goalieCount`
+
+  if [ $goalieCount -eq 0 ] ; then
+    goalieCount+=" goalies"
+  else
+    goalieCount+=" goalie"
+  fi
+
+  sed -i -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+         -e "s|GOALIE_COUNT|${goalieCount}|g" \
+         ${htmlEmail} ${txtEmail}
+  printGoalieStatusHtml all noLinks >> ${htmlEmail}
+  printGoalieStatusTxt all noLinks >> ${txtEmail}
+
+  sendmailViaGmail ${OrganizerEmail} "${subject}" ${htmlEmail} ${txtEmail} &
+}
+
+# ----------------------------------------------------------------------------
+# Send an email to the league Organizer that he got a spare keeper !
+#
+function sendGotReplacementGoalie () {
+  # send an email to all spare goalies who have not yet responded, indicating 
+  # that the spot (for $1) has been filled
+  sendSpotFilledEmails `head -n1 ${GOALIE_FILE} | awk -F~ '{printf "%s",$2}'`
+ 
+  # Now build the email to send to the regular goalie and the Organizer
+  #IFS='~' read -r gameId gameTimestamp gameDay gameStart location endTime active < <(grep "$1" ${SCHEDULE})
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b%_d")
+  #gameDate=`getGameDate`
+  subject="Got a Goalie"
+
+  # By default we'll send a simple notification to the League Organizer
+  htmlEmail="${MAIL_DIR}/adminGotSpareGoalie.html"
+  txtEmail="${MAIL_DIR}/adminGotSpareGoalie.txt"
+
+  cp ${MAIL_TEMPLATE_DIR}/adminGotSpareGoalie.html $htmlEmail
+  cp ${MAIL_TEMPLATE_DIR}/adminGotSpareGoalie.txt $txtEmail
+
+  touch $htmlEmail $txtEmail
+  chmod -f 777 $htmlEmail $txtEmail
+
+  spareGoalieName=`getFullName "$1"`
+
+  # identify the first non-[c]overed regular goalie
+  line=`grep -n "~g$" ${GOALIE_FILE} | head -n1 | cut -d: -f1`
+  regularGoalie=`tail -n+${line} ${GOALIE_FILE} | head -n1 | cut -d~ -f1`
+  regularGoalieEmail=`tail -n+${line} ${GOALIE_FILE} | head -n1 | cut -d~ -f2`
+
+  # append '~c` indicating that this gaolie is "[c]overed" for the game
+  sed -i "${line}s/$/~c/" ${GOALIE_FILE}
+
+  # Now send the status update the the Organizer and regular goalie $1
+  # indicating that the spot has been filled
+
+  sed -i -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+         -e "s|DATE|${gameDate}|g" \
+         -e "s|SPARE_GOALIE|${spareGoalieName}|g" \
+         -e "s|REGULAR_GOALIE|${regularGoalie}|g" \
+         ${htmlEmail} ${txtEmail}
+  printGoalieStatusHtml all noLinks >> ${htmlEmail}
+  printGoalieStatusTxt all noLinks >> ${txtEmail}
+
+  # Send email notification to the League Organizer and the regular goalie
+  # who is being replaced
+  toList="${OrganizerEmail} --to ${regularGoalieEmail}"
+  sendmailViaGmail "${toList}" "${subject}" ${htmlEmail} ${txtEmail} &
+}
+
+# ----------------------------------------------------------------------------
+# Send an email to the league Organizer that he got a spare keeper !
+# $1 is the email address of the spare goalie that can come
+#
+function sendGoalieProblemSolved () {
+ # IFS='~' read -r gameId gameTimestamp gameDay gameStart location endTime active < <(grep "$1" ${SCHEDULE})
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b%_d")
+  #gameDate=`getGameDate`
+  subject="Got a Goalie"
+
+  # By default we'll send a simple notification to the League Organizer
+  htmlEmail="${MAIL_DIR}/adminGoalieProblemSolved.html"
+  txtEmail="${MAIL_DIR}/adminGoalieProblemSolved.txt"
+
+  cp ${MAIL_TEMPLATE_DIR}/adminGoalieProblemSolved.html $htmlEmail
+  cp ${MAIL_TEMPLATE_DIR}/adminGoalieProblemSolved.txt $txtEmail
+
+  touch $htmlEmail $txtEmail
+  chmod -f 777 $htmlEmail $txtEmail
+
+  spareGoalieName=`getFullName "$1"`
+
+  # identify the first non-[c]overed regular goalie
+  line=`grep -n "~g$" ${GOALIE_FILE} | head -n1 | cut -d: -f1`
+  regularGoalie=`tail -n+${line} ${GOALIE_FILE} | head -n1 | cut -d~ -f1`
+  regularGoalieEmail=`tail -n+${line} ${GOALIE_FILE} | head -n1 | cut -d~ -f2`
+
+  # append '~c` indicating that this gaolie is "[c]overed" for the game
+  sed -i "${line}s/$/~c/" ${GOALIE_FILE}
+
+  # build the email
+  sed -i -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+         -e "s|SPARE_GOALIE|${spareGoalieName}|g" \
+         -e "s|REGULAR_GOALIE|${regularGoalie}|g" \
+         -e "s|DATE|${gameDate}|g" \
+         ${htmlEmail} ${txtEmail}
+  printGoalieStatusHtml all noLinks >> ${htmlEmail}
+  printGoalieStatusTxt all noLinks >> ${txtEmail}
+
+  # Send email notification to the League Organizer and the regular goalie
+  # who is being replaced
+  toList="${OrganizerEmail} --to ${regularGoalieEmail}"
+  sendmailViaGmail "${toList}" "${subject}" ${htmlEmail} ${txtEmail} &
+}
+
+
+# ----------------------------------------------------------------------------
+# Send an email to the League Organizer indicating that the reguluar ($1) was
+# denied
+function sendRegularDeniedEmail () {
+  subject="Regular was denied"
+
+  # By default we'll send a simple notification to the League Organizer
+  htmlEmail="${MAIL_DIR}/adminRegularDenied.html"
+  txtEmail="${MAIL_DIR}/adminRegularDenied.txt"
+
+  cp ${MAIL_TEMPLATE_DIR}/adminRegularDenied.html $htmlEmail
+  cp ${MAIL_TEMPLATE_DIR}/adminRegularDenied.txt $txtEmail
+
+  touch $htmlEmail $txtEmail
+  chmod -f 777 $htmlEmail $txtEmail
+
+  regularName=`getFirstName "$1"`
+  regularName+=" "
+  regularName+=`getLastName "$1"`
+  sed -i -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+         -e "s|REGULAR_NAME|${regularName}|g" \
+         ${htmlEmail} ${txtEmail}
+
+  sendmailViaGmail ${OrganizerEmail} "${subject}" ${htmlEmail} ${txtEmail} &
+}
+
+
+# ----------------------------------------------------------------------------
+# Send an email to the League Organizer indicating that the reguluar ($1) who
+# -was- going to bring beer, has bailed
+function sendBeerGuyBailedEmail () {
+  subject="Beer Guy Not Coming"
+
+  # By default we'll send a simple notification to the League Organizer
+  htmlEmail="${MAIL_DIR}/adminBeerGuyBailed.html"
+  txtEmail="${MAIL_DIR}/adminBeerGuyBailed.txt"
+
+  cp ${MAIL_TEMPLATE_DIR}/adminBeerGuyBailed.html $htmlEmail
+  cp ${MAIL_TEMPLATE_DIR}/adminBeerGuyBailed.txt $txtEmail
+
+  touch $htmlEmail $txtEmail
+  chmod -f 777 $htmlEmail $txtEmail
+
+  regularName=`getFirstName "$1"`
+  regularName+=" "
+  regularName+=`getLastName "$1"`
+  sed -i -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+         -e "s|PLAYER_NAME|${regularName}|g" \
+         ${htmlEmail} ${txtEmail}
+
+  sendmailViaGmail ${OrganizerEmail} "${subject}" ${htmlEmail} ${txtEmail} &
+}
+
+# ----------------------------------------------------------------------------
+# Send an email to the League Organizer indicating that the player ($1) who
+# -was- coming has bailed
+function sendRecindedEmail () {
+  subject="Dropout Notification"
+
+  # By default we'll send a simple notification to the League Organizer
+  htmlEmail="${MAIL_DIR}/adminPlayerRecinded.html"
+  txtEmail="${MAIL_DIR}/adminPlayerRecinded.txt"
+
+  cp ${MAIL_TEMPLATE_DIR}/adminPlayerRecinded.html $htmlEmail
+  cp ${MAIL_TEMPLATE_DIR}/adminPlayerRecinded.txt $txtEmail
+
+  local playerType=`getPlayerType $1`
+  if [ "${playerType}" == "s" ] ; then
+    playerType="(spare)"
+  else
+    playerType="(regular)"
+  fi
+
+  touch $htmlEmail $txtEmail
+  chmod -f 777 $htmlEmail $txtEmail
+
+
+  if [[ ${scoreTracker} == "yes" ]] ; then
+    versus=" vs $OPPONENT"
+  fi
+
+  gameDate=$(date -d"${GAME_DAY}" +"%a %b %_d")
+  
+  playerName=`getFirstName "$1"`
+  playerName+=" "
+  playerName+=`getLastName "$1"`  
+  sed -i -e "s|ORGANIZER|${LeagueOrganizer}|g" \
+         -e "s|PLAYER_TYPE|${playerType}|g" \
+         -e "s|PLAYER_NAME|${playerName}|g" \
+         -e "s|PLAYER_EMAIL|${1}|g" \
+         -e "s|GAME_DAY|${gameDate}|g" \
+         -e "s~GAME_TIME~${GAME_START/ [A|P]M/} - ${GAME_END}~g" \
+         -e "s|GAME_LOCATION|${GAME_LOCATION}${versus}|g" \
+         ${htmlEmail} ${txtEmail}
+
+         
+  sendmailViaGmail ${OrganizerEmail} "${subject}" ${htmlEmail} ${txtEmail} &
+}

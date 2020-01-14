@@ -1,0 +1,19 @@
+Hi PLAYER_NAME,
+
+Just wanted to let you know we were able to fill this spot.
+
+Thanks
+
+EMAIL_DATE LEAGUE_NAME <LEAGUE_EMAIL> wrote:
+
+> Hi PLAYER_NAME,
+>
+> Our regular keeper -REGULAR_GOALIE- can't play this GAME_DAY (GAME_TIME) @GAME_LOCATION
+> AM) @Dal
+>
+> Can you play ?
+>
+> *I can play*<URL_BASE/rsvp.html?email=PLAYER_EMAIL&action=request>
+> *I can't make it*<URL_BASE/rsvp.html?email=PLAYER_EMAIL&action=out>
+>
+>

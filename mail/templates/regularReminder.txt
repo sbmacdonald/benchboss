@@ -1,0 +1,10 @@
+Hi PLAYER_NAME,
+
+We haven't heard from you this week, please confirm for this *GAME_DAY* (GAME_TIME) at the GAME_LOCATION:
+
+*I'll be there !*<URL_BASE/rsvp.cgi?gid=GAME_ID&email=PLAYER_EMAIL&action=in>
+*I can't make it
+!*<URL_BASE/rsvp.cgi?gid=GAME_ID&email=PLAYER_EMAIL&action=out>
+
+Thanks!
+ORGANIZER

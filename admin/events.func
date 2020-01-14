@@ -1,0 +1,1034 @@
+# pull in the league's ENV variables
+. league.dat
+
+BB_ADMIN_LINK=$([[ ${REMOTE_USER} != ${SUPERUSER} ]] && echo "#" || echo "${SUPERUSER_ADMIN_PAGE}")
+
+eventsLogFile="${DATA_DIR}/events.log"
+EVENTS="${DATA_DIR}/events"
+
+# Global Function includes
+. /home/www/cgi-bin/include/functions
+. ${ROOT_DIR}/Common/Logging.sh
+
+# XDAL Webby stuff
+leagueUrl="http://xdal.org/benchboss/${LEAGUE_DIR}"
+rsvpUrl="${leagueUrl}/admin/events.cgi"
+
+# get the league config
+. ${LEAGUE_CFG}
+
+# -----------------------------------------------------------------------------
+# get the "unique" id of the game
+function getEventId () {
+ date "+%s"
+}
+
+
+# -----------------------------------------------------------------------------
+# get someone's full name given their email address
+#
+# $1 = email
+function getFullName () {
+  awk -F'~' -v email="$1" '$1 == email {printf "%s %s",$2,$3}' ${ROSTER}
+}
+
+# -----------------------------------------------------------------------------
+# get someone's first name given their email address
+#
+# $1 = email
+function getFirstName () {
+  awk -F'~' -v email="$1" '$1 == email {print $2}' ${ROSTER}
+}
+
+# -----------------------------------------------------------------------------
+# get someone's last name given their email address
+#
+# $1 = email
+function getLastName () {
+  awk -F'~' -v email="$1" '$1 == email {print $3}' ${ROSTER}
+}
+
+# -----------------------------------------------------------------------------
+# get the type (<r>egular|<s>pare) of a player given their email address
+#
+# $1 = email
+function getPlayerType () {
+  awk -F'~' -v email="$1" '$1 == email {print $4}' ${ROSTER}
+}
+
+# -----------------------------------------------------------------------------
+# get the position (<g>oalie|<s>kater) of a player given their email address
+function getPlayerPosition () {
+  awk -F'~' -v email="$1" '$1 == email {print $5}' ${ROSTER}
+}
+
+# -----------------------------------------------------------------------------
+# print out the name we want
+#
+# $1 = email
+function printResponseRecord () {
+  when=`date +%D' '%T`
+  printf "%-15s~%s~%s~%s~%s\n" "`getFullName \"$1\"`" "$1" "$when" "`getPlayerType \"$1\"`" "`getPlayerPosition \"$1\"`"
+}
+
+# -----------------------------------------------------------------------------
+# get a filename associated with the EventId 
+#
+# $1 == eventId
+# $2 == in/out
+#
+function getEventFilename () {
+  # Changed filename format to Ddd-Mmm-xx-in/out (ie. Tue-Jun-5-2012-in)
+  echo "${DATA_DIR}/event-$1.$2"
+}
+
+# -----------------------------------------------------------------------------
+# get the name of the Event
+function getEventName () {
+ grep ${CGI_id} ${EVENTS} | awk -F~ '{print $2}'
+}
+
+# -----------------------------------------------------------------------------
+# touch all of the Event files, to ensure they there
+# $1 == eventId
+#
+function touchEventFiles () {
+  eventId=$1
+  for file in in out ; do
+    file=`getEventFilename $eventId $file`
+    touch $file
+    chmod -f 777 $file
+  done
+}
+# -----------------------------------------------------------------------------
+# Check to see if a user ($1 == email) previously said they were coming
+# Returns 0 if the user was in the $infile
+# $1 == email
+# $2 == eventId
+function prevConfirmed () {
+  infile=`getEventFilename $2 in`
+  grep -q "$1" $infile
+  # 0 == prevConfirmed, 1 == not prevConfirmed
+  echo $?
+}
+
+# -----------------------------------------------------------------------------
+# Check to see if a user ($1 == email) previously said they were *not* coming
+# returns 0 if ther user has already declined
+# $1 == email
+# $2 == eventId
+function prevDeclined () {
+  outfile=`getEventFilename $2 out`
+  grep -q "$1" $outfile
+  # 0 == prevDeclined,  1 == not prevDeclined
+  echo $?
+}
+
+# ----------------------------------------------------------------------------
+# $1 == email
+# $2 == eventId
+#
+function im_in () {
+  infile=`getEventFilename ${CGI_id} in`
+  if [ `prevConfirmed $1 ${CGI_id}` -eq 0 ] ; then
+    echo "confirmed"
+  else
+
+    printResponseRecord "$1" >> $infile
+    if [ $? -eq 0 ] ; then
+     echo "confirmed"
+    else
+      echo "failed"
+    fi
+
+    # check to see if they previously told us they weren't coming
+    outfile=`getEventFilename ${CGI_id} out`
+    if [ `prevDeclined $1 ${CGI_id}` -eq 0 ] ; then
+      sed -i "/$1/d" $outfile
+      chmod -f 777 $outfile
+    fi
+  fi
+
+}
+
+# ----------------------------------------------------------------------------
+function im_out () {
+  outfile=`getEventFilename ${CGI_id} out`
+  infile=`getEventFilename ${CGI_id} in`
+  chmod 777 $outfile
+  #touchEventFiles ${CGI_id}
+
+  #declare -a playerInfo=`grep $1 ${ROSTER} | sed 's|~| |g'`
+  # ensure we have a valid email address
+  if [ "$1" != "" ] ; then
+
+    # is the the second response from the regular goalie ?
+    originallyConfirmed=`prevConfirmed $1 ${CGI_id}`
+    originallyDeclined=`prevDeclined $1 ${CGI_id}`
+
+    # see if the user previously said they were coming
+    if [ $originallyConfirmed -eq 0 ] ; then
+      sed -i "/$1/d" $infile
+      printResponseRecord "$1" >> $outfile
+      echo "rescinded"
+    else
+      # Only put the person on the out list once !
+      if [ $originallyDeclined -eq 1 ] ; then
+        printResponseRecord "$1" >> $outfile
+      fi 
+      echo "out"
+    fi
+  fi
+}
+
+# ----------------------------------------------------------------------------
+function im_att () {
+  if [ `grep -c "^${CGI_id}~" ${EVENTS}` -eq 1 ] ; then
+    echo "attendance"
+  else
+    echo "eventOver"
+  fi
+}
+
+# -----------------------------------------------------------------------------
+#
+function moveToIn() {
+  # ";" separated list of email addresses
+  for p in ${CGI_plist//;/ } ; do
+    im_in $p
+    logInfo "MovedToComing($REMOTE_USER): $p" >> $rosterLogFile
+  done
+}
+
+# -----------------------------------------------------------------------------
+#
+function moveToOut() {
+  # ";" separated list of email addresses
+  for p in ${CGI_plist//;/ } ; do
+    im_out $p
+    logInfo "MovedToOut($REMOTE_USER): $p" >> $rosterLogFile
+  done
+}
+
+
+# ----------------------------------------------------------------------------
+function printEventForm () {
+
+cat << EOF
+<script  type="text/javascript">  
+function urlencode()
+{
+var txt=document.getElementById("message").value;
+var encodetxt=encodeURI(txt)
+document.getElementById("message").innerHTML=encodetxt
+}  
+
+function urlencodee () {  
+  str = document.getElementById("message").value;
+  encodedString=encodeURIComponent(str);
+  encodedString.replace(/~/g, '%7E').replace(/\!/g, '%21').replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29').repl\
+ace(/\*/g, '%2A').replace(/"/g,'%22').replace(/%20/g, '+');
+  document.getElementById("message").value=encodedString;
+}  
+</script>
+
+EOF
+
+
+cat<<EOF
+<div class="row-fluid">
+
+<fieldset>
+<legend>Send Event RSVP Email:</legend>
+    <form class="form-horizontal" action="" method="POST" accept-charset="ISO-8859-1">
+    <input name="action" value="create" type="hidden">
+<!-- To: -->
+      <div class="control-group">
+        <label class="control-label" for="inputEmail">To:</label>
+        <div class="controls">
+          <label class="checkbox"><input type="checkbox" name="emailToRegulars" checked> Regulars</label>
+          <label class="checkbox"><input type="checkbox" name="emailToSpares" checked> Spares</label>
+          <label class="checkbox"><input type="checkbox" name="emailToInactive"> Inactive</label>
+        </div>
+      </div>
+
+<!-- Reply-To: -->
+      <div class="control-group">
+        <label class="control-label" for="subject">Reply-To:</label>
+        <div class="controls">
+          <input type="text" id="replyTo" name="replyTo" class="input-xlarge" value="${OrganizerEmail}">
+        </div>
+      </div>
+
+<!-- Subject: -->
+      <div class="control-group">
+        <label class="control-label" for="subject">Subject:</label>
+        <div class="controls">
+          <input type="text" name="subject" id="subject" class="input-xlarge" placeholder="Subject">
+        </div>
+      </div>
+
+<!-- Message: -->
+      <div class="control-group">
+        <label class="control-label" for="message">Message:</label>
+        <div class="controls">
+          <textarea rows="10" class="input-xxlarge" name="message" id="message"></textarea>
+        </div>
+      </div>
+
+<!-- Message: -->
+      <div class="control-group">
+        <label class="control-label" for="acceptText">Accept Link Text:</label>
+        <div class="controls">
+          <input type="text" class="input-small" name="acceptText" id="acceptText" value="I'm interested"></input>
+        </div>
+        <label class="control-label" for="declineText">Decline Link Text:</label>
+        <div class="controls">
+          <input type="text" class="input-small" name="declineText" id="declineText" value="Not interested"></input>
+        </div>
+      </div>
+
+<!-- Send Button -->
+      <div class="control-group">
+        <div class="controls">
+         <button type="button" class="btn btn-small btn-warning" onclick="window.location = '${HTTP_REFERER}'">Cancel</button>
+         <button type="submit" class="btn btn-small btn-primary" onclick="urlencodee()">Send</button>
+        </div>
+      </div>
+
+    </form>
+</fieldset>
+
+
+</div> <!-- class="row-fluid" -->
+
+
+EOF
+}
+
+
+
+# ----------------------------------------------------------------------------
+function printMainPage () {
+cat<<EOF
+<h4>Special Events</h4>
+<!--                                  top right bot left-->
+<div class="row-fluid" style="padding:0px 0px 5px 0px;">
+  <div class="span4" style="background-color: #F2EFE9;padding:15px;-moz-border-radius: 15px;border-radius: 15px;">
+    <p>Create a new event with RSVP tracking.</p>
+    <form method="post" action="events.cgi?action=new">
+    <input type="hidden" name="action" id="action" value="new">
+    <input class="btn btn-primary" type="submit" value="Create new event &raquo;">
+    </form>
+  </div> <!-- / class="span4" -->
+</div> <!-- /class="row-fluid" -->
+EOF
+    
+
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  # Write out the list active Events
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+cat<<EE1
+  <div class="row-fluid" style="padding:0px 0px 10px 0px;">
+  <div class="span4 bubble-fieldset">  
+EE1
+
+    printf "<h4>Active Events:</h4>\n"
+  if [ `awk -F"~" '$1 !~ /^#/ && $4 ~ /active/ {print $0}' ${EVENTS} | wc -l` == 0 ] ; then
+    printf "<h5>no active events</h5>"
+  else
+    printf "<table id=\"events\" class=\"table table-hover table-condensed\" cellpadding=\"2\" cellspacing=\"0\" border=\"0\">\n"
+    printf "<tr>\n"
+    printf "<th>Event</th>\n"
+    printf "<th>Created</th>\n"
+    printf "</tr>\n" 
+    awk -F"~" '$1 !~ /^#/ && $4 ~ /active/ {\
+      altLine++; \
+      if(altLine % 2 == 0){\
+        printf "<tr class=\"alt\">";\
+      }\
+      else{\
+        printf "<tr>";\
+      }\
+      printf "<td><a href=\"events.cgi?action=disp&id=%s\" >%s</a></td>",$1, $2;\
+      printf "<td>%s</td>\n",strftime("%D",$3); \
+    }' ${EVENTS}
+
+    printf "</table>"
+  fi
+  
+cat<<EE2
+  </div> <!-- /class="row-fluid" -->
+  </div> <!-- /class="span4" -->
+  
+  <div class="row-fluid">
+  <div class="span4 bubble-fieldset">  
+EE2
+  
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  # Write out the list past Events
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  #printf "<br><br>"
+  printf "<h4>Past Events:</h4>\n"
+  if [ `awk -F"~" '$1 !~ /^#/ && $4 ~ /complete/ {print $0}' ${EVENTS} | wc -l` == 0 ] ; then
+    printf "<h5>no past events</h5>"
+  else
+    printf "<table id=\"pastevents\" class=\"table table-hover table-condensed\" cellpadding=\"2\" cellspacing=\"0\" border=\"0\">\n"
+    #printf "<table id=\"events\" cellpadding=\"5\" cellspacing=\"2\" border=\"0\">\n"
+    printf "<tr>\n"
+    printf "<th>Event</th>\n"
+    printf "<th>Created</th>\n"
+    printf "</tr>\n"
+
+    awk -F"~" '$1 !~ /^#/ && $4 ~ /complete/ {\
+      altLine++; \
+      if(altLine % 2 == 0){\
+        printf "<tr class=\"alt\">";\
+      }\
+      else{\
+        printf "<tr>";\
+      }\
+      printf "<td><a href=\"events.cgi?action=disp&id=%s\" >%s</a></td>",$1, $2;\
+      printf "<td>%s</td>\n",$3; \
+    }' ${EVENTS}
+    
+    printf "</table>"
+  fi
+cat<<EE2
+  </div> <!-- /class="row-fluid" -->
+  </div> <!-- /class="span4" -->
+EE2
+}
+
+
+#-----------------------------------------------------------------------------
+# $1 == eventId
+# $2 == html message file
+# $3 == txt message file
+function writeMessageFile () {
+  #echo $QUERY_STRING > /tmp/querystring2
+  rawMessage="${MAIL_DIR}/Event-${1}.raw"
+
+  echo $CGI_message > ${rawMessage}
+
+  cat ${rawMessage} | sed "s|+| |g" | sed "s|%0A|<br>|g" | \
+      sed -e "s/%\([0-9A-F][0-9A-F]\)/\\\\\x\1/g" | xargs -0 echo -e >>  $2
+  cat ${rawMessage} | sed "s|+| |g" | \
+      sed -e "s/%\([0-9A-F][0-9A-F]\)/\\\\\x\1/g" | xargs -0 echo -e >> $3
+}
+
+# ----------------------------------------------------------------------------
+# $1 == eventId
+#
+function printEventPage_orig () {
+  comingFile=`getEventFilename $1 in`
+  outFile=`getEventFilename $1 out`
+  goals=`grep -c -i "^[A-z].*~[r|s]~[g]$" $comingFile`
+  skaters=`grep -c -i "^[A-z].*~[r|s]~[s]$" $comingFile`
+  sps=`grep -c -i "^[A-z].*~[s]~[s]$" $comingFile`
+  regs=`grep -c -i "^[A-z].*~[r]~[s]$" $comingFile`
+  regulars="$regs regulars"
+  spares=" $sps spares"
+  goalies="$goals goalies"
+  eventName="`grep $1 ${EVENTS} | awk -F~ '{print $2}'`"
+  if [ $goals -lt 2 ] ; then
+    if [ $goals -eq 1 ] ; then
+      goalies="<font color=#ff3333>$goals goalie</font>"
+    else
+      goalies="<font color=#ff3333>$goals goalies</font>"
+    fi
+  fi
+
+  date=`getGameDate`
+
+  if [ ${sps} -eq 0 ] ; then
+    breakdown=""
+  else
+    breakdown="($regulars, $spares)"
+  fi
+ 
+  printf "<h2>Attendance for \"`grep $1 ${EVENTS} | awk -F~ '{print $2}'`\"</h2>\n"
+  printf "<h4>$goalies, $skaters skaters $breakdown</h4>\n"
+  printf "<h4>People that said they are coming:</h4>\n"
+  printf "<table cellpadding=\"2\" cellspacing=\"0\" border=\"0\">\n"
+
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  # Write out the list of regulars who have said they will be there
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  for player in `sort -u -t"~" -k1 $comingFile | awk -F"~" '{printf "%s\n",$2}'` ; do
+    printf "<tr><td width=\"30\"></td>"
+    printf "<td width=\"160\" class=\"li\">%s</td>" "`getFullName $player`" 
+    if [ `isSpare $player` -eq 1 ] ; then
+      printf "<td class="small">(spare)</td>"
+    fi
+    if [ `isGoalie $player` -eq 0 ] ; then
+      printf "<td class="small">(goalie)</td>"
+    fi
+    printf "</tr>"
+  done
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  # Write out the list of regulars who have said they can't make it
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  
+  printf "</table>\n"
+  printf "<br>\n"
+  printf "<h4 class=\"out\">People that can't make it:</h4>\n"
+  printf "<table cellpadding=\"2\" cellspacing=\"0\" border=\"0\">\n"
+
+  for player in `sort -u -t"~" -k1 $outFile | awk -F"~" '{printf "%s\n",$2}'` ; do
+    printf "<tr><td width=\"30\"></td>"
+    printf "<td width=\"160\" class=\"li\">%s</td>" "`getFullName $player`" 
+    if [ `isSpare $player` -eq 1 ] ; then
+      printf "<td class="small">(spare)</td>"
+    fi  
+    if [ `isGoalie $player` -eq 0 ] ; then
+      printf "<td class="small">(goalie)</td>"
+    fi
+    printf "</tr>"
+  done
+  printf "</table><br>\n"
+
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+  # Write out the list of regulars who have not yet responded
+  # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+  printf "<h4>No response:</h4>\n"
+  printf "<table cellpadding=\"2\" cellspacing=\"0\" border=\"0\">\n"
+
+  for player in `grep -i "~[r|s]~[s|g]~[u|c]~[a|e]$" ${ROSTER} | sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'` ; do
+    grep -q $player $comingFile $outFile;
+    if [ $? -ge 1 ] ; then
+      printf "<tr><td width=\"30\"></td>"
+      printf "<td width=\"160\" class=\"li\">%s</td>" "`getFullName $player`" 
+      printf "</tr>"
+    fi
+  done
+  printf "</table>\n"
+}
+
+
+# -----------------------------------------------------------------------------
+function createEvent () {
+
+  # Create the new Event Id for the event
+  eventId=`getEventId`
+
+  # actually create the event pages, and send the emails
+  touchEventFiles $eventId
+  chmod -f 777 ${eventsLogFile}
+
+  # Add this event to the Events table
+  printf "${eventId}~${CGI_subject}~`date "+%s"`~active\n"  >> ${EVENTS}
+
+  # Lines that begin with "#" denote people that are temporarily off
+  # the list (ie. vacation/injury)
+  # We shuffle the roster to ensure that invite ordering is not biased
+  # week over week.
+
+  # Send to regulars iff requested
+  if [ ! -z ${CGI_emailToRegulars} ] ; then
+    recipients+=`shuf ${ROSTER} | awk -F~ '{if($1 !~ /^#/ && $4 ~ /r/ ){printf "%s ",$1}}'`
+  fi
+
+  # send to spares iff requested
+  if [ ! -z ${CGI_emailToSpares} ] ; then
+    recipients+=`shuf ${ROSTER} | awk -F~ '{if($1 !~ /^#/ && $4 ~ /s/ && $5 ~ /s/ ){printf "%s ",$1}}'`
+  fi
+
+  # send to inactive iff requested
+  if [ ! -z ${CGI_emailToInactive} ] ; then
+    recipients+=`shuf ${ROSTER} | awk -F~ '{if($1 !~ /^#/ && $4 ~ /i/ && $5 ~ /s/ ){printf "%s ",$1}}'`
+  fi
+
+  # Grab league config
+  . $LEAGUE_CFG
+
+  # we use idx as a counter to help us throttle our email requests
+  # in an attempt to avoid being denied service
+  EMAIL_BATCH_SIZE=5
+  EMAIL_BATCH_SEPARATOR=10
+  idx=0
+  for email in ${recipients} ; do
+
+    htmlmsg="${MAIL_DIR}/Event-${eventId}_${email}.html"
+    txtmsg="${MAIL_DIR}/Event-${eventId}_${email}.txt"
+    touch ${htmlmsg} ${txtmsg}
+    chmod 777 ${htmlmsg} ${txtmsg}
+    printf "<meta http-equiv=\"Content-Type\" " >> ${htmlmsg}
+    printf "content=\"text/html; charset=iso-8859-1\">" >> ${htmlmsg} 
+
+    logInfo "[$REMOTE_USER]: Sending Event (${eventId}) email:  Subject: $CGI_subject files: ${htmlmsg} ${txtmsg}" >> $eventsLogFile
+
+    writeMessageFile ${eventId} ${htmlmsg} ${txtmsg}
+
+    printf "<br><br>" >> ${htmlmsg}
+    printf "<a href=\"${leagueUrl}/events.cgi?" >> ${htmlmsg}
+    printf "email=${email}&action=in&id=$eventId\">" >> ${htmlmsg}
+    printf "<font size=\"4\"><b style=\"color: rgb(51, 51, 255);\">" >> ${htmlmsg}
+    printf "${CGI_acceptText}</b></font></a>" >> ${htmlmsg}  
+    printf "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" >> ${htmlmsg}
+    printf "<a href=\"${leagueUrl}/events.cgi?" >> ${htmlmsg}
+    printf "email=${email}&action=out&id=$eventId\">" >> ${htmlmsg}
+    printf "<font size=\"4\"><b><span style=\"color: rgb(102, 51, 102);\">" >> ${htmlmsg}
+    printf "${CGI_declineText}</span></b></font></a><br>" >> ${htmlmsg}
+
+    # Send the email 
+    if [ "${CGI_replyTo}" != "" ] ; then
+      ${SMPT_LIB_DIR}/smtp-cli-3.6 --missing-modules-ok \
+        --host=${EmailAccountHost} -enable-auth \
+        --subject "$CGI_subject" \
+        --reply-to "<${CGI_replyTo}>" \
+        --user ${EmailAccountAddress} --pass ${EmailAccountPass} \
+  	--to ${email} --from "${EmailAccountName} <${EmailAccountAddress}>"  \
+        --body-html ${htmlmsg} --body-plain ${txtmsg}
+    else
+      ${SMPT_LIB_DIR}/smtp-cli-3.6 --missing-modules-ok \
+        --host=${EmailAccountHost} -enable-auth \
+        --subject "$CGI_subject" \
+        --user ${EmailAccountAddress} --pass ${EmailAccountPass} \
+  	--to ${email} --from "${EmailAccountName} <${EmailAccountAddress}>"  \
+        --body-html ${htmlmsg} --body-plain ${txtmsg}
+    fi
+
+    # Throttle email sending to avoid blocking by Gmail servers
+    if [ $((++idx % ${EMAIL_BATCH_SIZE})) -eq 0 ] ; then
+      sleep ${EMAIL_BATCH_SEPARATOR}
+    fi
+  done
+  logInfo "[$REMOTE_USER]: event (${eventId}) emails sent successfully" >> $eventsLogFile
+  # Now send an email to the "reply-to" email address giving them a (public) 
+  # link to the attendance page for this event
+
+  htmlmsg="${MAIL_DIR}/Event-${eventId}_admin.html"
+  txtmsg="${MAIL_DIR}/Event-${eventId}_admin.txt"
+  touch ${htmlmsg} ${txtmsg}
+  chmod 777 ${htmlmsg} ${txtmsg}
+  printf "<meta http-equiv=\"Content-Type\" " >> ${htmlmsg}
+  printf "content=\"text/html; charset=iso-8859-1\">" >> ${htmlmsg} 
+  #adminName=`getFirstName ${CGI_replyTo}`
+  printf "Hi ${LeagueOrganizer},<br><br>\n" >> ${htmlmsg}
+  printf "A special event has been created for \"${CGI_subject}\"\n" >> ${htmlmsg}
+  printf "<br><br>\n" >> ${htmlmsg}
+  printf "You can use the following link to " >> ${htmlmsg}
+  printf "<a href=\"${rsvpUrl}?action=disp&id=${eventId}\">" >> ${htmlmsg}
+  printf "<font size=\"4\"><b style=\"color: rgb(51, 51, 255);\">" >> ${htmlmsg}
+  printf "check responses</b></font></a><br><br>\n" >> ${htmlmsg}
+
+  printf "Hi $adminName,<br><br>\n" >> ${txtmsg}
+  printf "A special event has been created for \"${CGI_subject}\"\n" >> ${txtmsg}
+  printf "\n\n" >> ${txtmsg}
+  printf "You can use the following link to " >> ${txtmsg}
+  printf "${rsvpUrl}?action=att&id=${eventId}" >> ${txtmsg}
+  printf "check responses</b></font><\n" >> ${txtmsg}
+
+  echo "${SMPT_LIB_DIR}/smtp-cli-3.6 --missing-modules-ok --host=${EmailAccountHost} -enable-auth --subject \"$CGI_subject\" --user ${EmailAccountAddress} --pass ${EmailAccountPass} --to ${CGI_replyTo} --from \"${EmailAccountName} <${EmailAccountAddress}>\" --body-html ${htmlmsg} --body-plain ${txtmsg} " >> $eventsLogFile
+  ${SMPT_LIB_DIR}/smtp-cli-3.6 --missing-modules-ok \
+      --host=${EmailAccountHost} -enable-auth \
+      --subject "Event: $CGI_subject" \
+      --user ${EmailAccountAddress} --pass ${EmailAccountPass} \
+      --to ${CGI_replyTo} --from "${EmailAccountName} <${EmailAccountAddress}>"  \
+      --body-html ${htmlmsg} --body-plain ${txtmsg}
+
+  logInfo "[$REMOTE_USER]: event (${eventId}) admin email sent successfully" >> $eventsLogFile
+cat << EOF
+Status: 302 redirect
+Location: events.cgi?action=main
+
+EOF
+}
+
+
+# -----------------------------------------------------------------------------
+# print the email to send to the administrator when the practice is full
+# $1 == eventId
+# $2 == [public|admin]
+#
+function printEventPage () {
+  eventId=$1
+  client=$2
+  
+  comingFile=`getEventFilename $eventId in`
+  outFile=`getEventFilename $eventId out`
+  coming=`grep -c ".*" $comingFile`
+  notComing=`grep -c ".*" $outFile`
+  
+  goals=`grep -c -i "^[A-z].*~.*~[r|s]~[g]$" $comingFile`
+  skaters=`grep -c -i "^[A-z].*~.*~[r|s]~[s]$" $comingFile`
+  sps=`grep -c -i "^[A-z].*~.*~[s]~[s]$" $comingFile`
+  regs=`grep -c -i "^[A-z].*~.*~[r]~[s]$" $comingFile`
+  regulars="$regs regulars"
+  spares=" $sps spares"
+  goalies="$goals goalies"
+  eventName="`grep $1 ${EVENTS} | awk -F~ '{print $2}'`"
+
+  case $goals in
+    0) goalies="<font color=#ff3333>$goals goalies</font>"
+       goaliesClass="label-important"
+       ;;
+    1) goalies="<font color=#ff3333>$goals goalie</font>"
+       goaliesClass="label-warning"
+       ;;
+    2) goalies="$goals goalies"
+       goaliesClass="label-success"
+       ;;
+    *) goalies="<font color=#ee3333>$goals goalies</font>"
+       ;;
+  esac
+  if [ $skaters -lt 10 ] ; then
+    skatersClass="label-warning"
+  else
+    skatersClass="label-success"
+  fi
+
+
+eventName=`getEventName`
+cat << EOE
+<h4>Attendance for $eventName</h4>
+<!-- Attendance Summary -->
+<table>
+  <thead>
+  <tr><th style="padding:5px 10px 0px 0px;">Goalies</th>
+      <th style="padding:5px 0px 0px 10px;">Skaters</th></tr>
+  </thead>
+  <tbody>
+  <tr>
+     <td style="text-align: center;padding:5px 10px 0px 0px;"><span class="label $goaliesClass" style="font-size: 14px; line-height:20px;">&nbsp;&nbsp;$goals&nbsp;&nbsp;</span></td>
+     <td style="text-align: center;padding:5px 0px 0px 10px;"><span class="label $skatersClass" style="font-size: 14px; line-height:20px;">&nbsp;&nbsp;$skaters&nbsp;&nbsp;</span></td>
+  </tr>
+  </tbody>
+</table>
+<br>
+<!-- /Attendance Summary -->
+EOE
+
+# ----------------------------------------------------------------------------
+# PEOPLE WHO ARE COMING
+
+if [ $((goals + skaters)) -lt 5 ] && [ "${client}" == "admin" ] ; then
+  sectionHeight="min-Height: 100px;"
+fi
+
+if [ $((goals + skaters)) -eq 0 ] || [ "$client" != "admin" ] ; then
+  comingSelectorEnabled="disabled"
+fi
+
+cat << EEE1
+<div class="accordion" id="attendance">
+
+  <!-- C O M I N G  -->
+  <div class="accordion-group">
+   <div class="accordion-heading">
+     <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#attendance" href="#comingSection"><b>Coming ($coming):</b></a>
+   </div>
+   <div id="comingSection" class="accordion-body collapse in">
+     <div class="accordion-inner" style="${sectionHeight}">
+     
+EEE1
+
+if [ "$comingSelectorEnabled" != "disabled" ] ; then
+cat<<EEE2
+       <div class="form-actions" style="margin:0px; padding:0px;">
+         <div class="btn-group">
+           <button $comingSelectorEnabled id="comingGroupSelector" class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="comingGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></span></input></button>
+           <ul class="dropdown-menu">
+             <li><a onclick="toggleGroup(true, 'comingGroup','coming')"><small>all</small></a></li>
+             <li><a onclick="toggleGroup(false,'comingGroup','coming')"><small>none</small></a></li>
+           </ul>
+         </div>
+
+          <div class="btn-group">
+            <button onclick="rsvp('coming','mto', $eventId);" id="comingIn" name="comingGroupMenu" class="btn btn-small btn-danger" style="border-radius: 0px;display: none;"><span class="icon-remove">&nbsp;Out</span></button>           
+          </div>
+          <div class="btn-group">
+            <button onclick="sendMail('coming', '$eventName');" id="comingEmail" name="comingGroupMenu" class="btn btn-small btn-default" style="border-radius: 0px;display: none;"><span class="icon-envelope">&nbsp;Email</span></button>
+          </div>
+       </div> <!-- / class="form-actions" -->
+EEE2
+fi
+
+if [ "$client" == "admin" ] ; then
+  printf "<table id=\"coming\" class=\"table table-hover table-condensed\" cellpadding=\"2\" cellspacing=\"0\" border=\"0\">\n"
+else
+  printf "<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n"
+fi
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of people who have said they are coming
+if [ $((goals + skaters)) -gt 0 ] ; then
+  for player in `sort -u -t"~" -k1 $comingFile | awk -F"~" '{printf "%s\n",$2}'` ; do
+    outLink="${whosComingUrl}?action=out&amp;email=$player"
+    printf "<tr id=\"$player\">\n"
+    printf "<td width=\"10\">\n"
+    if [ "$client" == "admin" ] ; then
+      printf "<input type=\"checkbox\" id=\"cb_$player\"  name=\"coming\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\"></td>"
+    else
+      printf "</td>"
+    fi
+    printf "<td><label for=\"cb_$player\"> %s" "`getFullName $player`" 
+    if [ `isSpare $player` -eq 1 ] ; then
+      printf "<i class="muted"> (spare)</i>"
+    fi
+    if [ `isGoalie $player` -eq 0 ] ; then
+      printf "<i class="muted"> (goalie)</i>"
+    fi
+    printf "</label></td>"
+    printf "</tr>"
+  done
+else
+  printf "<tr rowspan=\"2\"><i class=\"muted\">nobody yet</i></tr>"
+fi
+
+cat << EOW
+
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="comingSection" -->
+</div> <!-- /class="accordion-group" -->
+EOW
+
+# ----------------------------------------------------------------------------
+# PEOPLE WHO ARE _NOT_ COMING
+
+if [ $((goals + skaters)) -lt 5 ] && [ "${client}" == "admin" ] ; then
+  sectionHeight="min-Height: 100px;"
+fi
+
+if [ $((goals + skaters)) -eq 0 ] || [ "$client" != "admin" ] ; then
+  comingSelectorEnabled="disabled"
+fi
+
+if [ ! -f $outFile ] || [ ! -s $outFile ] && [ "$client" != "admin" ] ; then
+  notComingSelectorEnabled="disabled"
+  #sectionHeight="min-Height: 100px;"
+fi
+
+cat << EEE1
+  <div class="accordion-group">
+    <div class="accordion-heading">
+      <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#attendance" href="#notComingSection"><b>Not Coming ($notComing):</b></a>
+    </div>
+    <div id="notComingSection" class="accordion-body collapse out">
+      <div class="accordion-inner" style="${sectionHeight}">
+EEE1
+
+if [ "$notComingSelectorEnabled" != "disabled" ] ; then
+cat<<EEE2
+        <div class="form-actions" style="margin:0px; padding:0px;">
+          <div class="btn-group">
+            <button $noComingSelectorEnabled id="notComingGroupSelector" class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="notComingGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></span></button>
+            <ul class="dropdown-menu">
+              <li><a onclick="toggleGroup(true,'notComingIn','notComing')"><small>all</small></a></li>
+              <li><a onclick="toggleGroup(false,'notComingIn','notComing')"><small>none</small></a></li>
+            </ul>
+          </div> <!-- /class="btn-group" -->
+
+          <div class="btn-group">
+            <button onclick="rsvp('notComing','mti', $eventId);" id="notComingIn" name="notComingGroupMenu" class="btn btn-small btn-success" style="border-radius: 0px;display: none;"><span class="icon-ok">&nbsp;In</span></button>
+          </div> <!-- / class="btn-'notComing'group" -->
+        </div> <!-- / class="form-actions" -->
+EEE2
+fi
+
+if [ "$client" == "admin" ] ; then
+  printf "<table id=\"notComing\" class=\"table table-hover table-condensed\">"
+else
+  printf "<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n"
+fi
+printf "<tbody>\n"
+
+if [ "$notComingSelectorEnabled" != "disabled" ] ; then
+  for player in `sort -u -t"~" -k1 $outFile | awk -F"~" '{printf "%s\n",$2}'` ; do
+    inLink="${whosComingUrl}?action=in&amp;email=$player"
+    printf "<tr id=\"$player\">\n"
+    printf "<td width=\"10\">\n"
+    if [ "$client" == "admin" ] ; then
+      printf "<input type=\"checkbox\" id=\"cb_$player\"  name=\"notComing\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\"></td>"
+    else
+      printf "</td>"
+    fi
+    printf "<td><label for=\"cb_$player\"> %s" "`getFullName $player`" 
+    if [ `isSpare $player` -eq 1 ] ; then
+      printf "<i class="muted"> (spare)</i>"
+    fi
+    if [ `isGoalie $player` -eq 0 ] ; then
+      printf "<i class="muted"> (goalie)</i>"
+   fi
+    printf "</label></td>"
+    printf "</tr>"
+  done
+else
+  printf "<tr rowspan=\"2\"><i class=\"muted\">nobody yet</i></tr>"
+fi
+cat << EOY
+</tbody>
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="notComingSection" -->
+</div> <!-- /class="accordion-group" -->
+EOY
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# Write out the list of people who have not yet responded
+cat << EOB1
+  <div class="accordion-group">
+    <div class="accordion-heading">
+      <a class="accordion-toggle" style="text-decoration:none;" data-toggle="collapse" data-parent="#attendance" href="#noResponseSection"><b>No Response:</b></a>
+    </div>
+    <div id="noResponseSection" class="accordion-body collapse out">
+      <div class="accordion-inner">
+EOB1
+
+if [ "${client}" == "admin" ] ; then
+cat<<EOB2
+        <div class="form-actions" style="margin:0px; padding:0px;">
+          <div class="btn-group">
+            <button  id="noResponseGroupSelector" class="btn btn-small dropdown-toggle" style="border-radius: 0px;" data-toggle="dropdown"><input id="noResponseGroup" type="checkbox" style="margin-top:0px;">&nbsp;&nbsp;<span class="icon-caret-down"></span></button>
+            <ul class="dropdown-menu">
+              <li><a onclick="toggleGroup(true,'noResponseGroup','noResponse')"><small>all</small></a></li>
+              <li><a onclick="toggleGroup(false,'noResponseGroup','noResponse')"><small>none</small></a></li>
+            </ul>
+          </div> <!-- /class="btn-group" -->
+
+          <div class="btn-group">
+            <button onclick="rsvp('noResponse','mti', $eventId);" id="noResponseIn" name="noResponseGroupMenu" class="btn btn-small btn-success" style="border-radius: 0px;display:none"><span class="icon-ok">&nbsp;In</span></button>
+          </div> <!-- / class="btn-group" -->
+          <div class="btn-group">
+            <button onclick="rsvp('noResponse','mto', $eventId);" id="noResponseOut" name="noResponseGroupMenu" class="btn btn-small btn-danger" style="border-radius: 0px;display:none"><span class="icon-remove">&nbsp;Out</span></button>
+          </div>
+        </div> <!-- / class="form-actions" -->
+EOB2
+fi
+
+if [ "$client" == "admin" ] ; then
+  printf "<table id=\"noResponse\" class=\"table table-hover table-condensed\">"
+else
+  printf "<table cellpadding=\"0\" cellspacing=\"0\" border=\"0\">\n"
+fi
+printf "<tbody>\n"
+
+for player in `grep -i "~[r|s]~[s|g]~[c|u]~[a|e]$" ${ROSTER} | sort -u -t"~" -k1 |sort -t"~" -k3 | awk -F"~" '{if($1 !~ /^#/){print $1}}'` ; do
+  grep -q $player $comingFile $outFile;
+  if [ $? -ge 1 ] ; then
+    printf "<tr id=\"$player\">\n"
+    printf "<td width=\"10\">"
+    if [ "$client" == "admin" ] ; then
+      printf "<input type=\"checkbox\" id=\"cb_$player\"  name=\"noResponse\" onclick=\"selectRow(this)\" style=\"vertical-align: baseline;\"></td>"
+    else
+      printf "</td>"
+    fi
+    printf "<td><label for=\"cb_$player\"> %s" "`getFullName $player`" 
+    if [ `isSpare $player` -eq 1 ] ; then
+      printf "<i class="muted"> (spare)</i>"
+    fi
+    if [ `isGoalie $player` -eq 0 ] ; then
+      printf "<i class=\"muted\"> (goalie)</i>"
+    fi
+    printf "</label></td>"
+    printf "</tr>"
+  fi
+done
+cat << EOW
+</tbody>
+</table>
+   </div> <!-- /class="accordion-inner" -->
+  </div> <!-- /id="sparesSection" -->
+</div> <!-- /class="accordion-group" -->
+</div> <!-- /class="accordion" -->
+
+<script type="text/javascript">
+
+function sendMail(tid, eventName)
+{
+  var selected = \$("table#" + tid).find("tr input[type='checkbox']:checked");
+  var playerList = [];
+  selected.each(
+    function(i,e){
+      playerList.push(\$(e).parent().parent().attr('id'));
+    }
+  );
+
+  window.location.assign('groupMail.html?plist=' + playerList.join(";") +
+                         '&subject=Re: ' + eventName);
+}
+
+function rsvp(tid, answer, eid)
+{
+  var selected = \$("table#" + tid).find("tr input[type='checkbox']:checked");
+  var playerList = [];
+  selected.each(
+    function(i,e){
+      playerList.push(\$(e).parent().parent().attr('id'));
+    }
+  );
+  var request = \$.ajax({
+     type: "POST",
+     url: "events.html",
+     data: { action: answer, plist: playerList.join(";"), id: eid }
+     });
+
+  request.complete(function(msg){
+    window.location.assign('events.html?action=disp&id=' + eid);
+  });     
+}
+
+
+function toggleGroup(all,group,rowName)
+{
+  val = all
+  if(all){
+    document.getElementById(group).checked = true;
+  }
+  else{
+    document.getElementById(group).checked = false;
+  }
+  trclass = document.getElementById(group).checked ? "row-selected" : ""
+  elements = document.getElementsByName(rowName)
+  for(e=0; e < elements.length; e++) {
+    elements[e].checked=val;
+    highlightRow(elements[e], group);
+  }
+
+  enableMenu(rowName);
+}
+
+function highlightRow(e, group)
+{
+  trclass = document.getElementById(group).checked ? "row-selected" : ""
+  var tr = e.parentNode.parentNode;
+  tr.className = trclass;
+}
+
+function enableMenu(eName)
+{
+  elements = document.getElementsByName(eName)
+  var rowsSelected=0;
+  
+  for(e=0;e<elements.length;e++) {
+    rowsSelected += elements[e].checked ? 1 : 0;
+  }
+
+  if(document.getElementById(eName + 'In')){
+    document.getElementById(eName + 'In').style.display = rowsSelected > 0 ? "inline" : "none";
+  }
+
+  if(document.getElementById(eName + 'Out')){
+    document.getElementById(eName + 'Out').style.display = rowsSelected > 0 ? "inline" : "none";
+  }
+
+  if(document.getElementById(eName + 'Email')){
+    document.getElementById(eName + 'Email').style.display = rowsSelected > 0 ? "inline" : "none";
+  }
+}
+
+function selectRow(e)
+{
+  trclass = e.checked ? "row-selected" : ""
+  var tr = e.parentNode.parentNode;
+  tr.className = trclass;
+  enableMenu(e.getAttribute('name'));
+}
+
+</script>
+
+EOW
+}
