@@ -47,7 +47,10 @@ echo "CGI_action: ${CGI_action} CGI_glist: ${CGI_glist}" >> /tmp/variableSchedul
 # Check if there was an action specified, otherwise just display the page
 if [[ "$CGI_action" == "" ]] || [ "$CGI_s" == "rns" ] ; then
   htmlHeader
-
+  case ${LeagueType} in
+    Hockey|Soccer)admin_goalies="display:"; ;;
+    *)admin_goalies="display:none"; ;;
+  esac
   sed -e "s|LEAGUE_ACRO|${LEAGUE_ACRO}|g" \
       -e "s|USERNAME|$REMOTE_USER|g" \
       -e "s|SUPERUSER_ADMIN_PAGE|${BB_ADMIN_LINK}|" \

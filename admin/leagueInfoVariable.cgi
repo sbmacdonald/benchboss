@@ -57,8 +57,8 @@ htmlHeader
 # Some LeagueTypes don't have goalies, so we hide the
 # goalie admin menu item
 case ${LeagueType} in
-  Hockey|Soccer)admin_goalie="display:"; ;;
-  *)admin_goalie="display:none"; ;;
+  Hockey|Soccer)admin_goalies="display:"; ;;
+  *)admin_goalies="display:none"; ;;
 esac
 
 # update variables
@@ -100,16 +100,16 @@ fi
 
 case ${LeagueType} in
   Hockey)player_label="Skaters";
-         goalie_display="display:"
+         goalie_display="display:";
          ;;
   Soccer)player_label="Players";
          goalie_display="display:";
          ;;
   *)player_lable="Players";
-    goalie_display="display:none"
+    goalie_display="display:none";
     ;;
 esac
-case ${LeagueType}
+
 cat << EOF
 <div class="row-fluid" style="padding:15px 0px 10px 0px;">
 <div class="span5 bubble-fieldset" >

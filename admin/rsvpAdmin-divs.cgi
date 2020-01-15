@@ -124,8 +124,8 @@ htmlHeader
 # Some LeagueTypes don't have goalies, so we hide the
 # goalie admin menu item
 case ${LeagueType} in
-  Hockey|Soccer)admin_goalie="display:"; ;;
-  *)admin_goalie="display:none"; ;;
+  Hockey|Soccer)admin_goalies="display:"; ;;
+  *)admin_goalies="display:none"; ;;
 esac
 
 # update variables
