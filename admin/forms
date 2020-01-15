@@ -25,9 +25,17 @@ function printPlayerInfoForm () {
     CGI_pos=`echo $record | awk -F~ '{print $5}'`
   fi
 
+  player_label="UNDEFINED"
   case ${LeagueType} in
-    Hockey)player_label="Skater"; ;;
-    *)player_label="Player"
+    Hockey)player_label="skater";
+           display_goalie="display:";
+           ;;
+    Soccer)player_label="player"
+           display_goalie="display:";
+           ;;
+    *)player_label="player";
+      display_goalie="display:none;"
+      ;;
   esac
   
   if [[ $CGI_fname != "" ]] ; then
@@ -81,9 +89,9 @@ function printPlayerInfoForm () {
   #  fi
   #done
   if [[ $CGI_pos == "g" ]] ; then
-    posInput="<option value=\"skater\">${player_label}</option><option value=\"goalie\" selected=\"selected\">goalie</option>"    
+    posInput="<option value=\"skater\">${player_label}</option><option style="${display_goalie}" value=\"goalie\" selected=\"selected\">goalie</option>"    
   else
-    posInput="<option value=\"skater\" selected=\"selected\">${player_label}</option><option value=\"goalie\">goalie</option>"
+    posInput="<option value=\"skater\" selected=\"selected\">${player_label}</option><option style="${display_goalie}" value=\"goalie\">goalie</option>"
   fi
 
   case "$CGI_type" in
@@ -188,6 +196,18 @@ function printPlayerInfoFormDivs () {
     CGI_pos=`echo $record | awk -F~ '{print $5}'`
   fi
 
+  player_label="UNDEFINED"
+  case ${LeagueType} in
+    Hockey)player_label="skater";
+           display_goalie="display:";
+           ;;
+    Soccer)player_label="player"
+           display_goalie="display:";
+           ;;
+    *)player_label="player";
+      display_goalie="display:none;"
+      ;;
+  esac
   
   if [[ $CGI_fname != "" ]] ; then
     fnameInput="<td><input type=\"text\" name=\"fname\" id=\"fname\" value=\"$CGI_fname\" required></td>"
@@ -240,9 +260,9 @@ function printPlayerInfoFormDivs () {
   #  fi
   #done
   if [[ $CGI_pos == "g" ]] ; then
-    posInput="<option value=\"skater\">${player_label}</option><option value=\"goalie\" selected=\"selected\">goalie</option>"    
+    posInput="<option value=\"skater\">${player_label}</option><option style="${display_goalie}" value=\"goalie\" selected=\"selected\">goalie</option>"    
   else
-    posInput="<option value=\"skater\" selected=\"selected\">${player_label}</option><option value=\"goalie\">goalie</option>"
+    posInput="<option value=\"skater\" selected=\"selected\">${player_label}</option><option style="${display_goalie}" value=\"goalie\">goalie</option>"
   fi
 
   case "$CGI_type" in
