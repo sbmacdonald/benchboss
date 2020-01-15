@@ -1809,6 +1809,7 @@ function sendNoGameEmails () {
     sed -i -e "s|PLAYER_NAME|${playerName}|g" \
            -e "s|ORGANIZER|${LeagueOrganizer}|g" \
            -e "s|GAME_DAY|${gameDate}|g" \
+           -e "s|LEAGUE_TYPE|${LeagueType}|g" \
            -e "s|GAME_START|${GAME_START}|g" \
            -e "s|GAME_LOCATION|${GAME_LOCATION}|g" \
            ${htmlEmail} ${txtEmail}

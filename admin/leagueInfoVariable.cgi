@@ -54,11 +54,19 @@ fi
 # Start building the web page that will be displayed
 htmlHeader
 
+# Some LeagueTypes don't have goalies, so we hide the
+# goalie admin menu item
+case ${LeagueType} in
+  Hockey|Soccer)admin_goalie="display:"; ;;
+  *)admin_goalie="display:none"; ;;
+esac
+
 # update variables
 sed -e "s|LEAGUE_ACRO|${LEAGUE_ACRO}|g" \
     -e "s|USERNAME|$REMOTE_USER|g" \
     -e "s|SUPERUSER_ADMIN_PAGE|${BB_ADMIN_LINK}|" \
     -e "s|BEER_MENU_DISPLAY|$([ \"$beerTracker\" == \"yes\" ] && echo yes || echo none)|" \
+    -e "s|ADMIN_GOALIES|${admin_goalies}|g" \
     -e "s|TAB_ADMIN|active|" template-header.html
 
 # Compute denyRegulars options
@@ -90,6 +98,18 @@ else
   notifyRecindedOptions="<option value=\"yes\" selected>yes</option><option value=\"no\">no</option>"
 fi
 
+case ${LeagueType} in
+  Hockey)player_label="Skaters";
+         goalie_display="display:"
+         ;;
+  Soccer)player_label="Players";
+         goalie_display="display:";
+         ;;
+  *)player_lable="Players";
+    goalie_display="display:none"
+    ;;
+esac
+case ${LeagueType}
 cat << EOF
 <div class="row-fluid" style="padding:15px 0px 10px 0px;">
 <div class="span5 bubble-fieldset" >
@@ -112,7 +132,7 @@ cat << EOF
 
   <!-- Max Skaters -->
   <div class="control-group">
-    <label class="control-label" style="width:auto;margin-right:18px" for="maxSkaters">Max Skaters:</label>
+    <label class="control-label" style="width:auto;margin-right:18px" for="maxSkaters">Max ${player_label}:</label>
     <div class="controls" style="margin-left:auto;">
       <div class="input-prepend"><span class="add-on"><i class="icon-group"></i></span>
         <input type="number" class="input-mini" name="maxSkaters" id="maxSkaters" value="${maxSkaters:-20}"/>
@@ -140,7 +160,7 @@ cat << EOF
 
 
    <!-- Max Goalies -->
-  <div class="control-group">
+  <div class="control-group" style="${goalie_display}">
     <label class="control-label" style="width:auto;margin-right:18px" for="maxGoalies">Max Goalies:</label>
     <div class="controls" style="margin-left:auto;">
       <div class="input-prepend"><span class="add-on"><i class="icon-group"></i></span>

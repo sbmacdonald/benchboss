@@ -1,5 +1,5 @@
 Hi PLAYER_NAME,
 
-Reminder: *No hockey this GAME_DAY @ GAME_START at GAME_LOCATION !*
+Reminder: *No LEAGUE_TYPE this GAME_DAY @ GAME_START at GAME_LOCATION !*
 
 ORGANIZER

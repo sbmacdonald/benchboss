@@ -25,6 +25,10 @@ function printPlayerInfoForm () {
     CGI_pos=`echo $record | awk -F~ '{print $5}'`
   fi
 
+  case ${LeagueType} in
+    Hockey)player_label="Skater"; ;;
+    *)player_label="Player"
+  esac
   
   if [[ $CGI_fname != "" ]] ; then
     fnameInput="<td><input type=\"text\" name=\"fname\" id=\"fname\" value=\"$CGI_fname\" required></td>"
@@ -77,9 +81,9 @@ function printPlayerInfoForm () {
   #  fi
   #done
   if [[ $CGI_pos == "g" ]] ; then
-    posInput="<option value=\"skater\">skater</option><option value=\"goalie\" selected=\"selected\">goalie</option>"    
+    posInput="<option value=\"skater\">${player_label}</option><option value=\"goalie\" selected=\"selected\">goalie</option>"    
   else
-    posInput="<option value=\"skater\" selected=\"selected\">skater</option><option value=\"goalie\">goalie</option>"
+    posInput="<option value=\"skater\" selected=\"selected\">${player_label}</option><option value=\"goalie\">goalie</option>"
   fi
 
   case "$CGI_type" in
@@ -134,7 +138,7 @@ printf "</tr>\n"
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 printf "<tr><td>Position:</td>\n"
 printf "<td><select class=\"input-small\" name=\"pos\" id=\"pos\">\n"
-#<option value="skater" selected="selected">skater</option>
+#<option value="skater" selected="selected">${player_label}</option>
 #<option value="goalie">goalie</option>
 echo $posInput
 printf "</select></td></tr>\n"
@@ -236,9 +240,9 @@ function printPlayerInfoFormDivs () {
   #  fi
   #done
   if [[ $CGI_pos == "g" ]] ; then
-    posInput="<option value=\"skater\">skater</option><option value=\"goalie\" selected=\"selected\">goalie</option>"    
+    posInput="<option value=\"skater\">${player_label}</option><option value=\"goalie\" selected=\"selected\">goalie</option>"    
   else
-    posInput="<option value=\"skater\" selected=\"selected\">skater</option><option value=\"goalie\">goalie</option>"
+    posInput="<option value=\"skater\" selected=\"selected\">${player_label}</option><option value=\"goalie\">goalie</option>"
   fi
 
   case "$CGI_type" in
@@ -256,6 +260,10 @@ function printPlayerInfoFormDivs () {
       ;;
   esac
   
+case ${LeagueType} in
+  Hockey|Soccer)position_display="display:"; ;;
+  *)position_display="display:none"; ;;
+esac
 
 cat<<EEE
 <div class="row-fluid" style="padding:15px 0px 10px 0px;">
@@ -292,7 +300,7 @@ $emailKey
         </div> <!-- /control-group -->
         
         <!-- Position -->
-        <div class="control-group">
+        <div class="control-group" display="${position_display}">
           <label class="control-label" style="width:auto; margin:4px 5px 0px 0px; float: left;" for="pos">Position:</label>
           <div class="controls" style="margin-left:auto;">
 <select class="input-small" name="pos" id="pos">$posInput</select>

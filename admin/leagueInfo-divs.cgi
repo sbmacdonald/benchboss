@@ -82,9 +82,17 @@ fi
 # Start building the web page that will be displayed
 htmlHeader
 
+# Some LeagueTypes don't have goalies, so we hide the
+# goalie admin menu item
+case ${LeagueType} in
+  Hockey|Soccer)admin_goalie="display:"; ;;
+  *)admin_goalie="display:none"; ;;
+esac
+
 # update variables
 sed -e "s|LEAGUE_ACRO|${LEAGUE_ACRO}|g" \
     -e "s|USERNAME|$REMOTE_USER|g" \
+    -e "s|ADMIN_GOALIES|${admin_goalies}|g" \
     -e "s|TAB_ADMIN|active|" template-header.html
 
 cat << EOF

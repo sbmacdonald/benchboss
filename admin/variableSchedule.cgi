@@ -37,6 +37,10 @@ chmod 777 ${SCHEDULE}
 # end=01/18/2014
 # echo "$(( $(( $(date -d"${end}" +%s) - $(date -d"${start}" +%s))) / ${secondsPerWeek} ))"
 
+case ${LeagueType} in
+  Hockey|Soccer)admin_goalies="display:"; ;;
+  *)admin_goalies="display:none"; ;;
+esac
 
 chmod -f 777 /tmp/variableSchedule.log
 echo "CGI_action: ${CGI_action} CGI_glist: ${CGI_glist}" >> /tmp/variableSchedule.log
@@ -48,6 +52,7 @@ if [[ "$CGI_action" == "" ]] || [ "$CGI_s" == "rns" ] ; then
       -e "s|USERNAME|$REMOTE_USER|g" \
       -e "s|SUPERUSER_ADMIN_PAGE|${BB_ADMIN_LINK}|" \
       -e "s|BEER_MENU_DISPLAY|$([ \"$beerTracker\" == \"yes\" ] && echo yes || echo none)|" \
+      -e "s|ADMIN_GOALIES|${admin_goalies}|" \
       -e "s|TAB_ADMIN|active|" template-header.html
 
   if [ "$CGI_s" == "rns" ] ; then

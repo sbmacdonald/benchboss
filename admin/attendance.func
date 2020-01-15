@@ -141,16 +141,25 @@ EOE
 if [ "${GAME_ACTIVE}" == "c" ] ; then
   printf "<br><h4><span class=\"alert alert-error\"><i>CANCELLED</i></span></h4>\n"
 fi
+
+case ${LeagueType} in
+  Baseball|Basketball|Volleyball|Golf)goalie_display="display:none;"; ;;
+  *)goalie_display="display:"; ;;
+esac
+case ${LeagutType} in
+  Hockey)player_lable="Skaters"; ;;
+  *)player_lable="Players"; ;;
+esac
 cat <<EOE
 <!-- Attendance Summary -->
 <table>
   <thead>
-  <tr><th style="padding:5px 10px 0px 0px;">Goalies</th>
-      <th style="padding:5px 0px 0px 10px;">Skaters</th></tr>
+  <tr><th style="padding:5px 10px 0px 0px;${goalie_display}">Goalies</th>
+      <th style="padding:5px 0px 0px 10px;">${player_lable}</th></tr>
   </thead>
   <tbody>
   <tr>
-     <td style="text-align: center;padding:5px 10px 0px 0px;"><span class="label $goaliesClass" style="font-size: 14px; line-height:20px;">&nbsp;&nbsp;$goals&nbsp;&nbsp;</span></td>
+     <td style="text-align: center;padding:5px 10px 0px 0px;${goalie_display}"><span class="label $goaliesClass" style="font-size: 14px; line-height:20px;">&nbsp;&nbsp;$goals&nbsp;&nbsp;</span></td>
      <td style="text-align: center;padding:5px 0px 0px 10px;"><span class="label $skatersClass" style="font-size: 14px; line-height:20px;">&nbsp;&nbsp;$skaters&nbsp;&nbsp;</span></td>
   </tr>
   </tbody>
