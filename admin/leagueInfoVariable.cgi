@@ -105,7 +105,7 @@ case ${LeagueType} in
   Soccer)player_label="Players";
          goalie_display="display:";
          ;;
-  *)player_lable="Players";
+  *)player_label="Players";
     goalie_display="display:none";
     ;;
 esac
